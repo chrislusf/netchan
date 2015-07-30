@@ -19,7 +19,7 @@ Example:
 
 Both channels are chan []byte. Of course, sender channel is send-only, and receiver channel is receive-only.
 
-Simple, right? Read on. It's more sophisticated.
+Simple, right? Read on. It's more sophisticated underneath.
 
 # Design
 netchan has 2 or 3 components: optional Leader, Sender, Receiver
