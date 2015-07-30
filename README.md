@@ -43,3 +43,5 @@ One Sender can have multiple Receivers.
 
 Receiver can give Sender a filter, so that Receiver only receives filtered results.
 
+# Work in progress
+Welcome any sorts of help, discussion, pull requests, tests, etc.
