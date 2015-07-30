@@ -37,8 +37,7 @@ func main() {
 
 	println("100 messages sent")
 
-	for i := 0; i < 3; i++ {
-		m := <-recvChan
+	for m := range recvChan {
 		println(string(m))
 	}
 

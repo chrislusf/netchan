@@ -49,7 +49,6 @@ func NewChannel(name string, leader string) (chan []byte, error) {
 				log.Printf("%d:%v", c, err)
 			}
 			size := util.BytesToUint32(buf)
-			fmt.Println("size", size)
 			data := make([]byte, int(size))
 			io.ReadAtLeast(conn, data, int(size))
 
