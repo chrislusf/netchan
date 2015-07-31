@@ -43,5 +43,8 @@ One Sender can have multiple Receivers.
 
 Receiver can give Sender a filter, so that Receiver only receives filtered results.
 
+# Comparison
+netchan usage is similar to common messaging systems. However, netchan does not need a separate messaging system such as Kafka, NATS, etc. The data is stored on the sender directly.
+
 # Work in progress
 Welcome any sorts of help, discussion, pull requests, tests, etc.
