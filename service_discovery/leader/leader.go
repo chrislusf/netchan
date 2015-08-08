@@ -83,7 +83,7 @@ func (tl *TeamLeader) joinHandler(c *echo.Context) error {
 	return nil
 }
 
-func NewLeader(listenOn string) {
+func RunLeader(listenOn string) {
 	tl := &TeamLeader{}
 	tl.machines = make(map[Path][]*RemoteService)
 

@@ -228,7 +228,7 @@ func (d *DiskQueue) readOne() ([]byte, error) {
 			return nil, err
 		}
 
-		log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
+		// log.Printf("DISKQUEUE(%s): readOne() opened %s", d.name, curFileName)
 
 		if d.readPos > 0 {
 			_, err = d.readFile.Seek(d.readPos, 0)
@@ -292,7 +292,7 @@ func (d *DiskQueue) writeOne(data []byte) error {
 			return err
 		}
 
-		log.Printf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
+		// log.Printf("DISKQUEUE(%s): writeOne() opened %s", d.name, curFileName)
 
 		if d.writePos > 0 {
 			_, err = d.writeFile.Seek(d.writePos, 0)

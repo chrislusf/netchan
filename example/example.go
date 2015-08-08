@@ -18,13 +18,14 @@ func main() {
 
 	// start a leader for service discovery
 	go func() {
-		leader.NewLeader(":8930")
+		leader.RunLeader(":8930")
 	}()
 
-	sendChan, err := sender.NewChannel("source", "127.0.0.1:8930")
+	ss, sendChan, err := sender.NewChannel("source", "127.0.0.1:8930")
 	if err != nil {
 		panic(err)
 	}
+	go ss.Run()
 
 	recvChan, err := receiver.NewChannel("source", "127.0.0.1:8930")
 	if err != nil {
