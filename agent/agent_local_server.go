@@ -93,7 +93,7 @@ func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
 	q, ok := als.name2Queue[name]
 	if !ok {
 		// println("write q is ", q)
-		als.name2Queue[name] = queue.NewDiskQueue(name, os.TempDir(), 1024*1024, 2500, 2*time.Second)
+		als.name2Queue[name] = queue.NewDiskQueue(name+strconv.Itoa(als.Port), os.TempDir(), 1024*1024, 2500, 2*time.Second)
 		q = als.name2Queue[name]
 
 		//register stream

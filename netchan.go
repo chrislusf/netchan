@@ -78,10 +78,6 @@ func main() {
 
 	case agent.FullCommand():
 		agentServer := a.NewAgentServer(*agentPort, *agentLeaderServer)
-		err := agentServer.Local.Init()
-		if err != nil {
-			panic(err)
-		}
-		agentServer.Local.Run()
+		agentServer.Run()
 	}
 }
