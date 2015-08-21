@@ -1,49 +1,27 @@
-package main
+package flame
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"os"
 	"reflect"
-	"strings"
 	"sync"
 )
 
-var ()
-
-type Task struct {
-	Id     int
-	Input  *DatasetShard
-	Output *DatasetShard
-	Step   *Step
-}
-type Step struct {
-	Id       int
-	Input    *Dataset
-	Output   *Dataset
-	Function func(*Task)
-	Tasks    []*Task
+type AbstractDataset interface {
+	GetShards() []*DatasetShard
+	RunSelf(int)
 }
 
-type FlowContext struct {
-	Steps []*Step
-}
-
-func (f *FlowContext) AddStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps)}
-	for i, shard := range input.Shards {
-		t := &Task{Input: shard, Output: output.Shards[i], Step: s, Id: i}
-		s.Tasks = append(s.Tasks, t)
-	}
-	f.Steps = append(f.Steps, s)
-	return
+func (d *Dataset) GetShards() []*DatasetShard {
+	return d.Shards
 }
 
 type Dataset struct {
-	context *FlowContext
-	Type    reflect.Type
-	Shards  []*DatasetShard
+	context   *FlowContext
+	Type      reflect.Type
+	ValueType reflect.Type
+	Shards    []*DatasetShard
 
 	ErrorChan chan error
 	Generator func()
@@ -55,16 +33,18 @@ type DatasetShard struct {
 	WriteChan reflect.Value
 }
 
-func NewDataset(context *FlowContext, t reflect.Type) *Dataset {
+func NewDataset(context *FlowContext, valueType reflect.Type) *Dataset {
 	return &Dataset{
 		context:   context,
-		Type:      t,
+		Type:      valueType,
+		ValueType: valueType,
 		ErrorChan: make(chan error, 0),
 	}
 }
 
-func (d *Dataset) Shard(n int) *Dataset {
-	ctype := reflect.ChanOf(reflect.BothDir, d.Type)
+func (d *Dataset) Shard(n int, t reflect.Type) *Dataset {
+	ctype := reflect.ChanOf(reflect.BothDir, t)
+	d.Type = t
 	for i := 0; i < n; i++ {
 		ds := &DatasetShard{
 			Parent:    d,
@@ -76,21 +56,16 @@ func (d *Dataset) Shard(n int) *Dataset {
 	return d
 }
 
-func (d *Dataset) addStep(taskFuncValue reflect.Value,
+func (d *Dataset) addOneToOneStep(taskFuncValue reflect.Value,
 	taskExecution func(input reflect.Value, outChan reflect.Value),
 ) (ret *Dataset) {
-	t := taskFuncValue.Type()
-	if d.Type != t.In(0) {
-		panic(fmt.Sprintf("The input %v does not match function input %v", d.Type, t.In(0)))
-	}
-
 	ret = NewDataset(d.context, d.Type)
-	ret.Shard(len(d.Shards))
+	ret.Shard(len(d.Shards), d.Type)
 
 	step := d.context.AddStep(d, ret)
 	step.Function = func(task *Task) {
-		outChan := task.Output.WriteChan
-		for input := range task.Input.ReadChan {
+		outChan := task.Outputs[0].WriteChan
+		for input := range task.Inputs[0].ReadChan {
 			taskExecution(input, outChan)
 		}
 		outChan.Close()
@@ -102,16 +77,18 @@ func (d *Dataset) addStep(taskFuncValue reflect.Value,
 // input, type is same as parent Dataset's type
 // output chan, element type is same as current Dataset's type
 func (d *Dataset) Map(f interface{}) *Dataset {
+	d.assertType(f)
 	fn := reflect.ValueOf(f)
-	return d.addStep(fn, func(input reflect.Value, outChan reflect.Value) {
+	return d.addOneToOneStep(fn, func(input reflect.Value, outChan reflect.Value) {
 		fn.Call([]reflect.Value{input, outChan})
 	})
 }
 
 // f(A)bool
 func (d *Dataset) Filter(f interface{}) *Dataset {
+	d.assertType(f)
 	fn := reflect.ValueOf(f)
-	return d.addStep(fn, func(input reflect.Value, outChan reflect.Value) {
+	return d.addOneToOneStep(fn, func(input reflect.Value, outChan reflect.Value) {
 		outs := fn.Call([]reflect.Value{input})
 		if outs[0].Bool() {
 			outChan.Send(input)
@@ -119,25 +96,15 @@ func (d *Dataset) Filter(f interface{}) *Dataset {
 	})
 }
 
-func main() {
-	flag.Parse()
-
-	TextFile("/etc/passwd", 3).Map(func(line string, ch chan string) {
-		ch <- line
-	}).Filter(func(line string) bool {
-		return !strings.HasPrefix(line, "#")
-	}).Map(func(line string, ch chan string) {
-		println(line)
-		/*}).Partition(func(line string) int {
-		i++
-		return i*/
-	}).Run()
-
+func (d *Dataset) assertType(f interface{}) {
+	if d.ValueType != reflect.TypeOf(f).In(0) {
+		panic(fmt.Sprintf("The input %v does not match function input %v", d.ValueType, reflect.TypeOf(f).In(0)))
+	}
 }
 
 func TextFile(fname string, shard int) (ret *Dataset) {
 	ret = NewDataset(&FlowContext{}, reflect.TypeOf(""))
-	ret.Shard(shard)
+	ret.Shard(shard, reflect.TypeOf(""))
 	ret.Generator = func() {
 		// println("generate", fname)
 		file, err := os.Open(fname)
@@ -225,27 +192,4 @@ func (d *Dataset) RunSelf(stepId int) {
 	wg.Wait()
 	// println("dataset", stepId, "stopped")
 	return
-}
-
-func (s *Step) Run() {
-	var wg sync.WaitGroup
-	for _, t := range s.Tasks {
-		wg.Add(1)
-		go func(t *Task) {
-			defer wg.Done()
-			t.Run()
-		}(t)
-	}
-	wg.Wait()
-	return
-}
-
-// source ->w:ds:r -> task -> w:ds:r
-// source close next ds' w chan
-// ds close its own r chan
-// task close next ds' w:ds
-
-func (t *Task) Run() {
-	// println("run step", t.Step.Id, "task", t.Id)
-	t.Step.Function(t)
 }
