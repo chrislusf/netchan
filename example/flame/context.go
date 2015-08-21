@@ -6,7 +6,7 @@ type FlowContext struct {
 	Steps []*Step
 }
 
-func (f *FlowContext) AddStep(input AbstractDataset, output AbstractDataset) (s *Step) {
+func (f *FlowContext) AddStep(input *Dataset, output *Dataset) (s *Step) {
 	s = &Step{Input: input, Output: output, Id: len(f.Steps)}
 	// setup the network
 	for i, shard := range input.GetShards() {

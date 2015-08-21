@@ -12,8 +12,8 @@ type Task struct {
 }
 type Step struct {
 	Id       int
-	Input    AbstractDataset
-	Output   AbstractDataset
+	Input    *Dataset
+	Output   *Dataset
 	Function func(*Task)
 	Tasks    []*Task
 }

@@ -2,26 +2,19 @@ package flame
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"reflect"
 	"sync"
 )
-
-type AbstractDataset interface {
-	GetShards() []*DatasetShard
-	RunSelf(int)
-}
 
 func (d *Dataset) GetShards() []*DatasetShard {
 	return d.Shards
 }
 
 type Dataset struct {
-	context   *FlowContext
-	Type      reflect.Type
-	ValueType reflect.Type
-	Shards    []*DatasetShard
+	context *FlowContext
+	Type    reflect.Type
+	Shards  []*DatasetShard
 
 	ErrorChan chan error
 	Generator func()
@@ -33,11 +26,10 @@ type DatasetShard struct {
 	WriteChan reflect.Value
 }
 
-func NewDataset(context *FlowContext, valueType reflect.Type) *Dataset {
+func NewDataset(context *FlowContext, t reflect.Type) *Dataset {
 	return &Dataset{
 		context:   context,
-		Type:      valueType,
-		ValueType: valueType,
+		Type:      t,
 		ErrorChan: make(chan error, 0),
 	}
 }
@@ -56,11 +48,16 @@ func (d *Dataset) Shard(n int, t reflect.Type) *Dataset {
 	return d
 }
 
+func (d *Dataset) newNextDataset(shardSize int, t reflect.Type) (ret *Dataset) {
+	ret = NewDataset(d.context, t)
+	ret.Shard(shardSize, t)
+	return
+}
+
 func (d *Dataset) addOneToOneStep(taskFuncValue reflect.Value,
 	taskExecution func(input reflect.Value, outChan reflect.Value),
 ) (ret *Dataset) {
-	ret = NewDataset(d.context, d.Type)
-	ret.Shard(len(d.Shards), d.Type)
+	ret = d.newNextDataset(len(d.Shards), d.Type)
 
 	step := d.context.AddStep(d, ret)
 	step.Function = func(task *Task) {
@@ -76,30 +73,76 @@ func (d *Dataset) addOneToOneStep(taskFuncValue reflect.Value,
 // f(A, chan B)
 // input, type is same as parent Dataset's type
 // output chan, element type is same as current Dataset's type
-func (d *Dataset) Map(f interface{}) *Dataset {
-	d.assertType(f)
-	fn := reflect.ValueOf(f)
-	return d.addOneToOneStep(fn, func(input reflect.Value, outChan reflect.Value) {
-		fn.Call([]reflect.Value{input, outChan})
-	})
+func (d *Dataset) Map(f interface{}) (ret *Dataset) {
+	ret = d.newNextDataset(len(d.Shards), guessMapFuncReturnType(f))
+	step := d.context.AddStep(d, ret)
+	step.Function = func(task *Task) {
+		fn := reflect.ValueOf(f)
+		outChan := task.Outputs[0].WriteChan
+
+		ft := reflect.TypeOf(f)
+		if ft.In(ft.NumIn()-1).Kind() == reflect.Chan {
+			for input := range task.Inputs[0].ReadChan {
+				// println("func:", ft.String(), "input:", input.Type().String(), "outChan:", outChan.Type().String())
+				if input.Kind() == reflect.Struct && ft.NumIn() != 2 {
+					var args []reflect.Value
+					for i := 0; i < input.NumField(); i++ {
+						args = append(args, input.Field(i))
+					}
+					args = append(args, outChan)
+					fn.Call(args)
+				} else {
+					fn.Call([]reflect.Value{input, outChan})
+				}
+			}
+		} else if ft.NumOut() == 1 {
+			for input := range task.Inputs[0].ReadChan {
+				var outs []reflect.Value
+				if input.Kind() == reflect.Struct && ft.NumIn() != 1 {
+					var args []reflect.Value
+					for i := 0; i < input.NumField(); i++ {
+						args = append(args, input.Field(i))
+					}
+					outs = fn.Call(args)
+				} else {
+					outs = fn.Call([]reflect.Value{input})
+				}
+				outChan.Send(outs[0])
+			}
+		}
+
+		outChan.Close()
+	}
+	return
+}
+
+func guessMapFuncReturnType(f interface{}) reflect.Type {
+	ft := reflect.TypeOf(f)
+	if ft.In(ft.NumIn()-1).Kind() == reflect.Chan {
+		return ft.In(ft.NumIn() - 1).Elem()
+	}
+	if ft.NumOut() == 1 {
+		return ft.Out(0)
+	}
+	panic("Not sure the output type in " + ft.String())
 }
 
 // f(A)bool
-func (d *Dataset) Filter(f interface{}) *Dataset {
-	d.assertType(f)
-	fn := reflect.ValueOf(f)
-	return d.addOneToOneStep(fn, func(input reflect.Value, outChan reflect.Value) {
-		outs := fn.Call([]reflect.Value{input})
-		if outs[0].Bool() {
-			outChan.Send(input)
+func (d *Dataset) Filter(f interface{}) (ret *Dataset) {
+	ret = d.newNextDataset(len(d.Shards), d.Type)
+	step := d.context.AddStep(d, ret)
+	step.Function = func(task *Task) {
+		fn := reflect.ValueOf(f)
+		outChan := task.Outputs[0].WriteChan
+		for input := range task.Inputs[0].ReadChan {
+			outs := fn.Call([]reflect.Value{input})
+			if outs[0].Bool() {
+				outChan.Send(input)
+			}
 		}
-	})
-}
-
-func (d *Dataset) assertType(f interface{}) {
-	if d.ValueType != reflect.TypeOf(f).In(0) {
-		panic(fmt.Sprintf("The input %v does not match function input %v", d.ValueType, reflect.TypeOf(f).In(0)))
+		outChan.Close()
 	}
+	return
 }
 
 func TextFile(fname string, shard int) (ret *Dataset) {
