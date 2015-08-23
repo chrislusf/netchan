@@ -11,12 +11,23 @@ type Task struct {
 	Outputs []*DatasetShard
 	Step    *Step
 }
+
+type StepType int
+
+const (
+	OneToOne StepType = iota
+	OneToAll
+	AllToOne
+	AllToAll
+)
+
 type Step struct {
 	Id       int
 	Input    *Dataset
 	Output   *Dataset
 	Function func(*Task)
 	Tasks    []*Task
+	Type     StepType
 }
 
 func (s *Step) Run() {
@@ -29,13 +40,28 @@ func (s *Step) Run() {
 		}(t)
 	}
 	wg.Wait()
+
+	switch s.Type {
+	case OneToOne:
+		for _, t := range s.Tasks {
+			for _, out := range t.Outputs {
+				out.WriteChan.Close()
+			}
+		}
+	case OneToAll, AllToOne, AllToAll:
+		for _, shard := range s.Tasks[0].Outputs {
+			shard.WriteChan.Close()
+		}
+	}
+	// close the output channel
+
 	return
 }
 
 // source ->w:ds:r -> task -> w:ds:r
 // source close next ds' w chan
 // ds close its own r chan
-// task close next ds' w:ds
+// step, not task, closes next ds' w:ds
 
 func (t *Task) Run() {
 	// println("run  step", t.Step.Id, "task", t.Id)

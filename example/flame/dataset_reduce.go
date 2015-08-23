@@ -11,7 +11,7 @@ func (d *Dataset) Reduce(f interface{}) (ret *Dataset) {
 // f(V, V) V : less than function
 // New Dataset contains V
 func (d *Dataset) LocalReduce(f interface{}) (ret *Dataset) {
-	ret = d.newNextDataset(len(d.Shards), d.Type)
+	ret = d.context.newNextDataset(len(d.Shards), d.Type)
 	step := d.context.AddOneToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
@@ -31,13 +31,12 @@ func (d *Dataset) LocalReduce(f interface{}) (ret *Dataset) {
 			}
 		}
 		outChan.Send(localResult)
-		outChan.Close()
 	}
 	return ret
 }
 
 func (d *Dataset) MergeReduce(f interface{}) (ret *Dataset) {
-	ret = d.newNextDataset(1, d.Type)
+	ret = d.context.newNextDataset(1, d.Type)
 	step := d.context.AddManyToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
@@ -57,7 +56,6 @@ func (d *Dataset) MergeReduce(f interface{}) (ret *Dataset) {
 			}
 		}
 		outChan.Send(localResult)
-		outChan.Close()
 	}
 	return ret
 }

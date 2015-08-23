@@ -22,10 +22,35 @@ func NewKeyValue(key, value string) KeyValue {
 func main() {
 	flag.Parse()
 
-	flame.TextFile("/etc/passwd", 3).Map(func(line string, ch chan string) {
-		ch <- line
-	}).Filter(func(line string) bool {
+	flame.NewContext().TextFile(
+		"/etc/passwd", 1,
+	).Filter(func(line string) bool {
 		return !strings.HasPrefix(line, "#")
+	}).Map(func(line string, ch chan string) {
+		for _, token := range strings.Split(line, ":") {
+			ch <- token
+		}
+	}).Sort(func(a string, b string) bool {
+		if strings.Compare(a, b) < 0 {
+			return true
+		}
+		return false
+	}).Map(func(key string) int {
+		return 1
+	}).Reduce(func(x int, y int) int {
+		return x + y
+	}).Map(func(x int) {
+		println("count:", x)
+	})
+
+	flame.NewContext().TextFile(
+		"/etc/passwd", 3,
+	).Partition(
+		5,
+	).Filter(func(line string) bool {
+		return !strings.HasPrefix(line, "#")
+	}).Map(func(line string, ch chan string) {
+		ch <- line
 	}).Map(func(line string, ch chan KeyValue) {
 		ch <- NewKeyValue(line[0:4], line)
 	}).Sort(func(a string, b string) bool {
@@ -34,14 +59,13 @@ func main() {
 		}
 		return false
 	}).Map(func(key, line string) string {
-		println(key, line)
 		return key
 	}).Map(func(key string) int {
 		return 1
 	}).Reduce(func(x int, y int) int {
 		return x + y
-	}).Map(func(x int, ch chan int) {
+	}).Map(func(x int) {
 		println("count:", x)
-	}).Run()
+	})
 
 }

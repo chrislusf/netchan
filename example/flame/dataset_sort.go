@@ -14,7 +14,7 @@ func (d *Dataset) Sort(f interface{}) (ret *Dataset) {
 // f(V, V) bool : less than function
 // New Dataset contains K,V
 func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
-	ret = d.newNextDataset(len(d.Shards), d.Type)
+	ret = d.context.newNextDataset(len(d.Shards), d.Type)
 	step := d.context.AddOneToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		lessThanFuncValue := reflect.ValueOf(f)
@@ -23,6 +23,10 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 		for input := range task.InputChan() {
 			kvs = append(kvs, input.Interface())
 		}
+		// println("got all inputs")
+		// if this is stuck, usually means upstream some chan is not closed
+		// since the source waits for all inputs
+
 		if d.Type.Kind() == reflect.Struct {
 			timsort.Sort(kvs, func(a interface{}, b interface{}) bool {
 				ret := lessThanFuncValue.Call([]reflect.Value{
@@ -40,16 +44,16 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 				return ret[0].Bool()
 			})
 		}
+
 		for _, kv := range kvs {
 			outChan.Send(reflect.ValueOf(kv))
 		}
-		outChan.Close()
 	}
 	return ret
 }
 
 func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
-	ret = d.newNextDataset(1, d.Type)
+	ret = d.context.newNextDataset(1, d.Type)
 	step := d.context.AddManyToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
@@ -85,8 +89,6 @@ func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
 				pq.Enqueue(x, shardId)
 			}
 		}
-
-		outChan.Close()
 	}
 	return ret
 }

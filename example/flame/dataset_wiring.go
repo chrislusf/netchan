@@ -2,9 +2,11 @@ package flame
 
 import (
 	"reflect"
+
+	"github.com/chrislusf/netchan/example/lib"
 )
 
-func (d *Dataset) Shard(n int) *Dataset {
+func (d *Dataset) EnsureShard(n int) {
 	ctype := reflect.ChanOf(reflect.BothDir, d.Type)
 	for i := 0; i < n; i++ {
 		ds := &DatasetShard{
@@ -14,11 +16,28 @@ func (d *Dataset) Shard(n int) *Dataset {
 		}
 		d.Shards = append(d.Shards, ds)
 	}
-	return d
 }
 
-func (d *Dataset) newNextDataset(shardSize int, t reflect.Type) (ret *Dataset) {
-	ret = NewDataset(d.context, t)
-	ret.Shard(shardSize)
+// hash data or by data key, return a new dataset
+func (d *Dataset) Partition(shard int) (ret *Dataset) {
+	ret = d.context.newNextDataset(shard, d.Type)
+	step := d.context.AddManyToManySourceStep(d, ret)
+	step.Function = func(task *Task) {
+		for input := range task.InputChan() {
+			v := guessKey(input)
+
+			var x int
+			switch v.Kind() {
+			case reflect.Int:
+				x = int(v.Int()) % shard
+			case reflect.String:
+				x = int(lib.Hash([]byte(v.String()))) % shard
+			case reflect.Slice:
+				x = int(lib.Hash(v.Bytes())) % shard
+			}
+
+			task.Outputs[x].WriteChan.Send(input)
+		}
+	}
 	return
 }
