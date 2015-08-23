@@ -22,13 +22,13 @@ func NewKeyValue(key, value string) KeyValue {
 func main() {
 	flag.Parse()
 
-	flame.TextFile("/etc/passwd", 1).Map(func(line string, ch chan string) {
+	flame.TextFile("/etc/passwd", 3).Map(func(line string, ch chan string) {
 		ch <- line
 	}).Filter(func(line string) bool {
 		return !strings.HasPrefix(line, "#")
 	}).Map(func(line string, ch chan KeyValue) {
 		ch <- NewKeyValue(line[0:4], line)
-	}).LocalSort(func(a string, b string) bool {
+	}).Sort(func(a string, b string) bool {
 		if strings.Compare(a, b) < 0 {
 			return true
 		}
@@ -36,11 +36,12 @@ func main() {
 	}).Map(func(key, line string) string {
 		println(key, line)
 		return key
-	}).Map(func(key string, ch chan int) {
-		println("key:", key)
-		/*}).Partition(func(line string) int {
-		i++
-		return i*/
+	}).Map(func(key string) int {
+		return 1
+	}).Reduce(func(x int, y int) int {
+		return x + y
+	}).Map(func(x int, ch chan int) {
+		println("count:", x)
 	}).Run()
 
 }

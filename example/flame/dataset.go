@@ -34,55 +34,20 @@ func NewDataset(context *FlowContext, t reflect.Type) *Dataset {
 	}
 }
 
-func (d *Dataset) Shard(n int, t reflect.Type) *Dataset {
-	ctype := reflect.ChanOf(reflect.BothDir, t)
-	d.Type = t
-	for i := 0; i < n; i++ {
-		ds := &DatasetShard{
-			Parent:    d,
-			ReadChan:  make(chan reflect.Value, 0),
-			WriteChan: reflect.MakeChan(ctype, 0),
-		}
-		d.Shards = append(d.Shards, ds)
-	}
-	return d
-}
-
-func (d *Dataset) newNextDataset(shardSize int, t reflect.Type) (ret *Dataset) {
-	ret = NewDataset(d.context, t)
-	ret.Shard(shardSize, t)
-	return
-}
-
-func (d *Dataset) addOneToOneStep(taskFuncValue reflect.Value,
-	taskExecution func(input reflect.Value, outChan reflect.Value),
-) (ret *Dataset) {
-	ret = d.newNextDataset(len(d.Shards), d.Type)
-
-	step := d.context.AddStep(d, ret)
-	step.Function = func(task *Task) {
-		outChan := task.Outputs[0].WriteChan
-		for input := range task.Inputs[0].ReadChan {
-			taskExecution(input, outChan)
-		}
-		outChan.Close()
-	}
-	return
-}
-
 // f(A, chan B)
 // input, type is same as parent Dataset's type
 // output chan, element type is same as current Dataset's type
 func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 	ret = d.newNextDataset(len(d.Shards), guessMapFuncReturnType(f))
-	step := d.context.AddStep(d, ret)
+	step := d.context.AddOneToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		fn := reflect.ValueOf(f)
 		outChan := task.Outputs[0].WriteChan
+		defer outChan.Close()
 
 		ft := reflect.TypeOf(f)
 		if ft.In(ft.NumIn()-1).Kind() == reflect.Chan {
-			for input := range task.Inputs[0].ReadChan {
+			for input := range task.InputChan() {
 				// println("func:", ft.String(), "input:", input.Type().String(), "outChan:", outChan.Type().String())
 				if input.Kind() == reflect.Struct && ft.NumIn() != 2 {
 					var args []reflect.Value
@@ -96,7 +61,7 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 				}
 			}
 		} else if ft.NumOut() == 1 {
-			for input := range task.Inputs[0].ReadChan {
+			for input := range task.InputChan() {
 				var outs []reflect.Value
 				if input.Kind() == reflect.Struct && ft.NumIn() != 1 {
 					var args []reflect.Value
@@ -111,7 +76,6 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 			}
 		}
 
-		outChan.Close()
 	}
 	return
 }
@@ -130,24 +94,24 @@ func guessMapFuncReturnType(f interface{}) reflect.Type {
 // f(A)bool
 func (d *Dataset) Filter(f interface{}) (ret *Dataset) {
 	ret = d.newNextDataset(len(d.Shards), d.Type)
-	step := d.context.AddStep(d, ret)
+	step := d.context.AddOneToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		fn := reflect.ValueOf(f)
 		outChan := task.Outputs[0].WriteChan
-		for input := range task.Inputs[0].ReadChan {
+		defer outChan.Close()
+		for input := range task.InputChan() {
 			outs := fn.Call([]reflect.Value{input})
 			if outs[0].Bool() {
 				outChan.Send(input)
 			}
 		}
-		outChan.Close()
 	}
 	return
 }
 
 func TextFile(fname string, shard int) (ret *Dataset) {
 	ret = NewDataset(&FlowContext{}, reflect.TypeOf(""))
-	ret.Shard(shard, reflect.TypeOf(""))
+	ret.Shard(shard)
 	ret.Generator = func() {
 		// println("generate", fname)
 		file, err := os.Open(fname)

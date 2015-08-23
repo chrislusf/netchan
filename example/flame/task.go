@@ -1,6 +1,7 @@
 package flame
 
 import (
+	"reflect"
 	"sync"
 )
 
@@ -37,6 +38,40 @@ func (s *Step) Run() {
 // task close next ds' w:ds
 
 func (t *Task) Run() {
-	// println("run step", t.Step.Id, "task", t.Id)
+	// println("run  step", t.Step.Id, "task", t.Id)
 	t.Step.Function(t)
+	// println("stop step", t.Step.Id, "task", t.Id)
+}
+
+func (t *Task) InputChan() chan reflect.Value {
+	if len(t.Inputs) == 1 {
+		return t.Inputs[0].ReadChan
+	}
+	var prevChans []chan reflect.Value
+	for _, c := range t.Inputs {
+		prevChans = append(prevChans, c.ReadChan)
+	}
+	return merge(prevChans)
+}
+
+func merge(cs []chan reflect.Value) (out chan reflect.Value) {
+	var wg sync.WaitGroup
+
+	out = make(chan reflect.Value)
+
+	for _, c := range cs {
+		wg.Add(1)
+		go func(c chan reflect.Value) {
+			defer wg.Done()
+			for n := range c {
+				out <- n
+			}
+		}(c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return
 }
