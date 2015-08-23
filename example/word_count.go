@@ -30,11 +30,6 @@ func main() {
 		for _, token := range strings.Split(line, ":") {
 			ch <- token
 		}
-	}).Sort(func(a string, b string) bool {
-		if strings.Compare(a, b) < 0 {
-			return true
-		}
-		return false
 	}).Map(func(key string) int {
 		return 1
 	}).Reduce(func(x int, y int) int {
@@ -47,25 +42,17 @@ func main() {
 		"/etc/passwd", 3,
 	).Partition(
 		5,
-	).Filter(func(line string) bool {
-		return !strings.HasPrefix(line, "#")
-	}).Map(func(line string, ch chan string) {
-		ch <- line
-	}).Map(func(line string, ch chan KeyValue) {
-		ch <- NewKeyValue(line[0:4], line)
+	).Map(func(line string, ch chan KeyValue) {
+		if len(line) > 4 {
+			ch <- NewKeyValue(line[0:4], line)
+		}
 	}).Sort(func(a string, b string) bool {
 		if strings.Compare(a, b) < 0 {
 			return true
 		}
 		return false
-	}).Map(func(key, line string) string {
-		return key
-	}).Map(func(key string) int {
-		return 1
-	}).Reduce(func(x int, y int) int {
-		return x + y
-	}).Map(func(x int) {
-		println("count:", x)
+	}).Map(func(key, line string) {
+		println(key, ":", line)
 	})
 
 }

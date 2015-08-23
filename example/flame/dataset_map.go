@@ -71,7 +71,7 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 		}
 	}
 	if ret == nil {
-		d.Run()
+		d.context.Run()
 	}
 	return
 }
