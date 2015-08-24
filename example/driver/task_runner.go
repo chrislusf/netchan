@@ -49,18 +49,20 @@ func (tr *TaskRunner) Run() bool {
 	ctx := flame.Contexts[taskContext.ContextId]
 	step := ctx.Steps[taskContext.StepId]
 	tr.Task = step.Tasks[taskContext.TaskId]
-	// 4. setup task inputs
-	tr.connectInputs()
-	// 5. setup task outputs
-	tr.connectOutputs()
+
+	// 4. setup task input and output channels
+	var wg sync.WaitGroup
+	tr.connectInputs(&wg)
+	tr.connectOutputs(&wg)
 	// 6. starts to run the task locally
 	tr.Task.Run()
-	// 7. shutdown out channels
+	// 7. need to close connected output channels
+	wg.Wait()
 
 	return true
 }
 
-func (tr *TaskRunner) connectInputs() {
+func (tr *TaskRunner) connectInputs(wg *sync.WaitGroup) {
 	for _, shard := range tr.Task.Inputs {
 		d := shard.Parent
 		readChanName := fmt.Sprintf("ds-%d-shard-%d-", d.Id, shard.Id)
@@ -69,11 +71,11 @@ func (tr *TaskRunner) connectInputs() {
 		if err != nil {
 			log.Panic(err)
 		}
-		shard.ReadChan = rawReadChannelToTyped(rawChan, d.Type)
+		shard.ReadChan = rawReadChannelToTyped(rawChan, d.Type, wg)
 	}
 }
 
-func (tr *TaskRunner) connectOutputs() {
+func (tr *TaskRunner) connectOutputs(wg *sync.WaitGroup) {
 	for _, shard := range tr.Task.Outputs {
 		d := shard.Parent
 
@@ -83,12 +85,11 @@ func (tr *TaskRunner) connectOutputs() {
 		if err != nil {
 			log.Panic(err)
 		}
-		connectTypedWriteChannelToRaw(shard.WriteChan, rawChan)
+		connectTypedWriteChannelToRaw(shard.WriteChan, rawChan, wg)
 	}
 }
 
-func rawReadChannelToTyped(c chan []byte, t reflect.Type) chan reflect.Value {
-	var wg sync.WaitGroup
+func rawReadChannelToTyped(c chan []byte, t reflect.Type, wg *sync.WaitGroup) chan reflect.Value {
 
 	out := make(chan reflect.Value)
 
@@ -105,47 +106,32 @@ func rawReadChannelToTyped(c chan []byte, t reflect.Type) chan reflect.Value {
 				out <- reflect.Indirect(v)
 			}
 		}
-	}()
 
-	go func() {
-		wg.Wait()
 		close(out)
 	}()
+
 	return out
 
 }
 
-func connectTypedWriteChannelToRaw(writeChan reflect.Value, c chan []byte) {
-	var wg sync.WaitGroup
-
+func connectTypedWriteChannelToRaw(writeChan reflect.Value, c chan []byte, wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		counter := 0
 		var t reflect.Value
 		for ok := true; ok; {
 			if t, ok = writeChan.Recv(); ok {
-				counter++
-				println("sent", counter)
 				var buf bytes.Buffer
 				enc := gob.NewEncoder(&buf)
 				if err := enc.EncodeValue(t); err != nil {
 					log.Fatal("data type:", t.Kind(), " encode error:", err)
 				}
 				c <- buf.Bytes()
-				println("sent", counter, ":", t.String())
-			} else {
-				println("sent closing....")
 			}
 		}
-		println("sent closed.")
-
-	}()
-
-	go func() {
-		wg.Wait()
 		close(c)
+
 	}()
 
 }
