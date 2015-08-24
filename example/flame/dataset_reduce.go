@@ -15,6 +15,7 @@ func (d *Dataset) LocalReduce(f interface{}) (ret *Dataset) {
 	step := d.context.AddOneToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
+		defer outChan.Close()
 		isFirst := true
 		var localResult reflect.Value
 		fn := reflect.ValueOf(f)
@@ -40,6 +41,7 @@ func (d *Dataset) MergeReduce(f interface{}) (ret *Dataset) {
 	step := d.context.AddManyToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
+		defer outChan.Close()
 		isFirst := true
 		var localResult reflect.Value
 		fn := reflect.ValueOf(f)

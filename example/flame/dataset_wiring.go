@@ -10,6 +10,7 @@ func (d *Dataset) EnsureShard(n int) {
 	ctype := reflect.ChanOf(reflect.BothDir, d.Type)
 	for i := 0; i < n; i++ {
 		ds := &DatasetShard{
+			Id:        i,
 			Parent:    d,
 			ReadChan:  make(chan reflect.Value, 0),
 			WriteChan: reflect.MakeChan(ctype, 0),
@@ -35,7 +36,6 @@ func (d *Dataset) Partition(shard int) (ret *Dataset) {
 			case reflect.Slice:
 				x = int(lib.Hash(v.Bytes())) % shard
 			}
-
 			task.Outputs[x].WriteChan.Send(input)
 		}
 	}

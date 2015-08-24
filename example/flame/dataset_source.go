@@ -16,7 +16,6 @@ func (fc *FlowContext) Source(f interface{}, shard int) (ret *Dataset) {
 		ctype := reflect.ChanOf(reflect.BothDir, ret.Type)
 		outChan := reflect.MakeChan(ctype, 0)
 		fn := reflect.ValueOf(f)
-
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
@@ -39,6 +38,10 @@ func (fc *FlowContext) Source(f interface{}, shard int) (ret *Dataset) {
 						i = 0
 					}
 				}
+			}
+
+			for _, out := range task.Outputs {
+				out.WriteChan.Close()
 			}
 		}()
 

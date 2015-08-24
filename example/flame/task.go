@@ -32,36 +32,29 @@ type Step struct {
 
 func (s *Step) Run() {
 	var wg sync.WaitGroup
-	for _, t := range s.Tasks {
+	for i, t := range s.Tasks {
 		wg.Add(1)
-		go func(t *Task) {
+		go func(i int, t *Task) {
 			defer wg.Done()
 			t.Run()
-		}(t)
+		}(i, t)
 	}
 	wg.Wait()
 
+	// need to globally close output channels
 	switch s.Type {
-	case OneToOne:
-		for _, t := range s.Tasks {
-			for _, out := range t.Outputs {
-				out.WriteChan.Close()
-			}
-		}
-	case OneToAll, AllToOne, AllToAll:
+	case AllToAll:
 		for _, shard := range s.Tasks[0].Outputs {
 			shard.WriteChan.Close()
 		}
 	}
-	// close the output channel
-
 	return
 }
 
 // source ->w:ds:r -> task -> w:ds:r
 // source close next ds' w chan
 // ds close its own r chan
-// step, not task, closes next ds' w:ds
+// task closes its own channel to next ds' w:ds
 
 func (t *Task) Run() {
 	// println("run  step", t.Step.Id, "task", t.Id)
@@ -77,6 +70,7 @@ func (t *Task) InputChan() chan reflect.Value {
 	for _, c := range t.Inputs {
 		prevChans = append(prevChans, c.ReadChan)
 	}
+	println("merge input chan:", len(prevChans))
 	return merge(prevChans)
 }
 
@@ -85,6 +79,8 @@ func merge(cs []chan reflect.Value) (out chan reflect.Value) {
 
 	out = make(chan reflect.Value)
 
+	counter, total := 0, len(cs)
+
 	for _, c := range cs {
 		wg.Add(1)
 		go func(c chan reflect.Value) {
@@ -92,11 +88,18 @@ func merge(cs []chan reflect.Value) (out chan reflect.Value) {
 			for n := range c {
 				out <- n
 			}
+			counter++
+			if total > 1 {
+				println("Closed", counter, "/", total)
+			}
 		}(c)
 	}
 
 	go func() {
 		wg.Wait()
+		if total > 1 {
+			println("Finally close chan, ", counter, "/", total)
+		}
 		close(out)
 	}()
 	return

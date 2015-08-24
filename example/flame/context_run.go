@@ -4,7 +4,23 @@ import (
 	"sync"
 )
 
+var runner Runner
+
+// Invoked by driver task runner
+func RegisterRunner(r Runner) {
+	runner = r
+}
+
+type Runner interface {
+	Run() bool
+}
+
 func (fc *FlowContext) Run() {
+	// hook to run task runner
+	if runner != nil && runner.Run() {
+		return
+	}
+
 	var wg sync.WaitGroup
 
 	// start all task edges

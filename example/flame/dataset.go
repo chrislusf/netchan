@@ -10,6 +10,7 @@ func (d *Dataset) GetShards() []*DatasetShard {
 }
 
 type Dataset struct {
+	Id      int
 	context *FlowContext
 	Type    reflect.Type
 	Shards  []*DatasetShard
@@ -19,17 +20,21 @@ type Dataset struct {
 }
 
 type DatasetShard struct {
+	Id        int
 	Parent    *Dataset
 	ReadChan  chan reflect.Value
 	WriteChan reflect.Value
 }
 
 func NewDataset(context *FlowContext, t reflect.Type) *Dataset {
-	return &Dataset{
+	d := &Dataset{
+		Id:        len(context.Datasets),
 		context:   context,
 		Type:      t,
 		ErrorChan: make(chan error, 0),
 	}
+	context.Datasets = append(context.Datasets, d)
+	return d
 }
 
 func (d *Dataset) RunSelf(stepId int) {

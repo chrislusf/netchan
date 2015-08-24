@@ -4,12 +4,18 @@ import (
 	"reflect"
 )
 
+// reference by task runner on remote mode
+var Contexts []*FlowContext
+
 type FlowContext struct {
-	Steps []*Step
+	Steps    []*Step
+	Datasets []*Dataset
 }
 
-func NewContext() *FlowContext {
-	return &FlowContext{}
+func NewContext() (fc *FlowContext) {
+	fc = &FlowContext{}
+	Contexts = append(Contexts, fc)
+	return
 }
 
 func (fc *FlowContext) newNextDataset(shardSize int, t reflect.Type) (ret *Dataset) {

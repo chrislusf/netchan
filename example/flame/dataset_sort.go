@@ -19,6 +19,7 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 	step.Function = func(task *Task) {
 		lessThanFuncValue := reflect.ValueOf(f)
 		outChan := task.Outputs[0].WriteChan
+		defer outChan.Close()
 		var kvs []interface{}
 		for input := range task.InputChan() {
 			kvs = append(kvs, input.Interface())
@@ -48,6 +49,7 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 		for _, kv := range kvs {
 			outChan.Send(reflect.ValueOf(kv))
 		}
+
 	}
 	return ret
 }
@@ -57,6 +59,7 @@ func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
 	step := d.context.AddManyToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
+		defer outChan.Close()
 		fn := reflect.ValueOf(f)
 		comparator := func(a, b reflect.Value) bool {
 			outs := fn.Call([]reflect.Value{

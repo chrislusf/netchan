@@ -1,0 +1,5 @@
+TODO:
+0. properly close output chan for each task
+1. cross dataset join
+2. driver lib to run each step as a separate process
+3. distribute process to multiple machines

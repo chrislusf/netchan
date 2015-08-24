@@ -2,8 +2,10 @@ package main
 
 import (
 	"flag"
+	"os"
 	"strings"
 
+	_ "github.com/chrislusf/netchan/example/driver"
 	"github.com/chrislusf/netchan/example/flame"
 )
 
@@ -22,6 +24,8 @@ func NewKeyValue(key, value string) KeyValue {
 func main() {
 	flag.Parse()
 
+	println("command is:", os.Args[0])
+
 	flame.NewContext().TextFile(
 		"/etc/passwd", 1,
 	).Filter(func(line string) bool {
@@ -38,21 +42,22 @@ func main() {
 		println("count:", x)
 	})
 
+	test2()
+
+}
+
+func test2() {
 	flame.NewContext().TextFile(
-		"/etc/passwd", 3,
+		"/etc/hosts", 3,
 	).Partition(
-		5,
-	).Map(func(line string, ch chan KeyValue) {
-		if len(line) > 4 {
-			ch <- NewKeyValue(line[0:4], line)
-		}
-	}).Sort(func(a string, b string) bool {
+		3,
+	).Sort(func(a string, b string) bool {
 		if strings.Compare(a, b) < 0 {
 			return true
 		}
 		return false
-	}).Map(func(key, line string) {
-		println(key, ":", line)
+	}).Map(func(line string) {
+		println(line)
 	})
 
 }
