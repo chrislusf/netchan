@@ -20,9 +20,13 @@ func (d *Dataset) EnsureShard(n int) {
 }
 
 // hash data or by data key, return a new dataset
-func (d *Dataset) Partition(shard int) (ret *Dataset) {
-	ret = d.context.newNextDataset(shard, d.Type)
-	step := d.context.AddManyToManySourceStep(d, ret)
+func (d *Dataset) Partition(shard int) *Dataset {
+	return d.partition_scatter(shard).partition_collect(shard)
+}
+
+func (d *Dataset) partition_scatter(shard int) (ret *Dataset) {
+	ret = d.context.newNextDataset(len(d.Shards)*shard, d.Type)
+	step := d.context.AddOneToEveryNStep(d, shard, ret)
 	step.Function = func(task *Task) {
 		for input := range task.InputChan() {
 			v := guessKey(input)
@@ -38,6 +42,22 @@ func (d *Dataset) Partition(shard int) (ret *Dataset) {
 			}
 			task.Outputs[x].WriteChan.Send(input)
 		}
+		for _, out := range task.Outputs {
+			out.WriteChan.Close()
+		}
+	}
+	return
+}
+
+func (d *Dataset) partition_collect(shard int) (ret *Dataset) {
+	m := len(d.Shards) / shard
+	ret = d.context.newNextDataset(shard, d.Type)
+	step := d.context.AddEveryNToOneStep(d, m, ret)
+	step.Function = func(task *Task) {
+		for input := range task.InputChan() {
+			task.Outputs[0].WriteChan.Send(input)
+		}
+		task.Outputs[0].WriteChan.Close()
 	}
 	return
 }

@@ -12,43 +12,43 @@ import (
 	"github.com/chrislusf/netchan/example/flame"
 )
 
-type TaskContext struct {
+type TaskOption struct {
 	ContextId int
 	StepId    int
 	TaskId    int
 }
 
-var runner *TaskRunner
-var taskContext TaskContext
-
 func init() {
-	flag.IntVar(&taskContext.ContextId, "task.context.id", -1, "context id")
-	flag.IntVar(&taskContext.StepId, "task.step.id", -1, "step id")
-	flag.IntVar(&taskContext.TaskId, "task.task.id", -1, "task id")
+	var taskOption TaskOption
+	flag.IntVar(&taskOption.ContextId, "task.context.id", -1, "context id")
+	flag.IntVar(&taskOption.StepId, "task.step.id", -1, "step id")
+	flag.IntVar(&taskOption.TaskId, "task.task.id", -1, "task id")
 
-	runner = NewTaskRunner()
-	flame.RegisterRunner(runner)
+	flame.RegisterRunner(NewTaskRunner(&taskOption))
 }
 
 type TaskRunner struct {
-	Task *flame.Task
+	option *TaskOption
+	Task   *flame.Task
 }
 
-func NewTaskRunner() *TaskRunner {
-	return &TaskRunner{}
+func NewTaskRunner(option *TaskOption) *TaskRunner {
+	return &TaskRunner{option: option}
+}
+
+func (tr *TaskRunner) ShouldRun() bool {
+	fmt.Printf("task runner option %+v\n", tr.option)
+	return tr.option.TaskId != -1 && tr.option.StepId != -1 && tr.option.ContextId != -1
 }
 
 // if this should not run, return false
-func (tr *TaskRunner) Run() bool {
-	if taskContext.TaskId == -1 || taskContext.StepId == -1 || taskContext.ContextId == -1 {
-		return false
-	}
+func (tr *TaskRunner) Run(fc *flame.FlowContext) {
 	// 1. setup connection to driver program
 	// 2. receive the context
 	// 3. find the task
-	ctx := flame.Contexts[taskContext.ContextId]
-	step := ctx.Steps[taskContext.StepId]
-	tr.Task = step.Tasks[taskContext.TaskId]
+	ctx := flame.Contexts[tr.option.ContextId]
+	step := ctx.Steps[tr.option.StepId]
+	tr.Task = step.Tasks[tr.option.TaskId]
 
 	// 4. setup task input and output channels
 	var wg sync.WaitGroup
@@ -58,8 +58,6 @@ func (tr *TaskRunner) Run() bool {
 	tr.Task.Run()
 	// 7. need to close connected output channels
 	wg.Wait()
-
-	return true
 }
 
 func (tr *TaskRunner) connectInputs(wg *sync.WaitGroup) {

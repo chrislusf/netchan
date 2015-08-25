@@ -56,7 +56,7 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 
 func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
 	ret = d.context.newNextDataset(1, d.Type)
-	step := d.context.AddManyToOneStep(d, ret)
+	step := d.context.AddAllToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
 		defer outChan.Close()

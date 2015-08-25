@@ -4,21 +4,25 @@ import (
 	"sync"
 )
 
-var runner Runner
+var runners []Runner
 
 // Invoked by driver task runner
 func RegisterRunner(r Runner) {
-	runner = r
+	runners = append(runners, r)
 }
 
 type Runner interface {
-	Run() bool
+	Run(fc *FlowContext)
+	ShouldRun() bool
 }
 
 func (fc *FlowContext) Run() {
-	// hook to run task runner
-	if runner != nil && runner.Run() {
-		return
+	// hook to run task runners
+	for _, r := range runners {
+		if r.ShouldRun() {
+			r.Run(fc)
+			return
+		}
 	}
 
 	var wg sync.WaitGroup

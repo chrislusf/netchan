@@ -8,12 +8,13 @@ import (
 var Contexts []*FlowContext
 
 type FlowContext struct {
+	Id       int
 	Steps    []*Step
 	Datasets []*Dataset
 }
 
 func NewContext() (fc *FlowContext) {
-	fc = &FlowContext{}
+	fc = &FlowContext{Id: len(Contexts)}
 	Contexts = append(Contexts, fc)
 	return
 }
@@ -42,7 +43,7 @@ func (f *FlowContext) AddOneToOneStep(input *Dataset, output *Dataset) (s *Step)
 }
 
 // the task should run on the destination dataset shard
-func (f *FlowContext) AddManyToOneStep(input *Dataset, output *Dataset) (s *Step) {
+func (f *FlowContext) AddAllToOneStep(input *Dataset, output *Dataset) (s *Step) {
 	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: AllToOne}
 	// setup the network
 	t := &Task{Step: s, Id: 0}
@@ -59,7 +60,7 @@ func (f *FlowContext) AddManyToOneStep(input *Dataset, output *Dataset) (s *Step
 
 // the task should run on the source dataset shard
 // input is nil for initial source dataset
-func (f *FlowContext) AddOneToManySourceStep(input *Dataset, output *Dataset) (s *Step) {
+func (f *FlowContext) AddOneToAllStep(input *Dataset, output *Dataset) (s *Step) {
 	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToAll}
 	// setup the network
 	t := &Task{Step: s, Id: 0}
@@ -75,13 +76,43 @@ func (f *FlowContext) AddOneToManySourceStep(input *Dataset, output *Dataset) (s
 }
 
 // the tasks should run on the source dataset shards
-func (f *FlowContext) AddManyToManySourceStep(input *Dataset, output *Dataset) (s *Step) {
+func (f *FlowContext) AddAllToAllStep(input *Dataset, output *Dataset) (s *Step) {
 	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: AllToAll}
 	// setup the network
 	for _, inShard := range input.GetShards() {
 		t := &Task{Inputs: []*DatasetShard{inShard}, Step: s, Id: 0}
 		for _, outShard := range output.GetShards() {
 			t.Outputs = append(t.Outputs, outShard)
+		}
+		s.Tasks = append(s.Tasks, t)
+	}
+	f.Steps = append(f.Steps, s)
+	return
+}
+
+func (f *FlowContext) AddOneToEveryNStep(input *Dataset, n int, output *Dataset) (s *Step) {
+	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToAll}
+	// setup the network
+	m := len(input.GetShards())
+	for i, inShard := range input.GetShards() {
+		t := &Task{Inputs: []*DatasetShard{inShard}, Step: s, Id: len(s.Tasks)}
+		for k := 0; k < n; k++ {
+			t.Outputs = append(t.Outputs, output.GetShards()[k*m+i])
+		}
+		s.Tasks = append(s.Tasks, t)
+	}
+	f.Steps = append(f.Steps, s)
+	return
+}
+
+func (f *FlowContext) AddEveryNToOneStep(input *Dataset, m int, output *Dataset) (s *Step) {
+	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToAll}
+	// setup the network
+	n := len(output.GetShards())
+	for i, outShard := range output.GetShards() {
+		t := &Task{Outputs: []*DatasetShard{outShard}, Step: s, Id: len(s.Tasks)}
+		for k := 0; k < m; k++ {
+			t.Inputs = append(t.Inputs, input.GetShards()[k*n+i])
 		}
 		s.Tasks = append(s.Tasks, t)
 	}

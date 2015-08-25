@@ -16,6 +16,8 @@ type StepType int
 
 const (
 	OneToOne StepType = iota
+	OneToEveryN
+	EveryNToOne
 	OneToAll
 	AllToOne
 	AllToAll
@@ -41,13 +43,6 @@ func (s *Step) Run() {
 	}
 	wg.Wait()
 
-	// need to globally close output channels
-	switch s.Type {
-	case AllToAll:
-		for _, shard := range s.Tasks[0].Outputs {
-			shard.WriteChan.Close()
-		}
-	}
 	return
 }
 
@@ -70,7 +65,6 @@ func (t *Task) InputChan() chan reflect.Value {
 	for _, c := range t.Inputs {
 		prevChans = append(prevChans, c.ReadChan)
 	}
-	println("merge input chan:", len(prevChans))
 	return merge(prevChans)
 }
 
@@ -79,8 +73,6 @@ func merge(cs []chan reflect.Value) (out chan reflect.Value) {
 
 	out = make(chan reflect.Value)
 
-	counter, total := 0, len(cs)
-
 	for _, c := range cs {
 		wg.Add(1)
 		go func(c chan reflect.Value) {
@@ -88,18 +80,11 @@ func merge(cs []chan reflect.Value) (out chan reflect.Value) {
 			for n := range c {
 				out <- n
 			}
-			counter++
-			if total > 1 {
-				println("Closed", counter, "/", total)
-			}
 		}(c)
 	}
 
 	go func() {
 		wg.Wait()
-		if total > 1 {
-			println("Finally close chan, ", counter, "/", total)
-		}
 		close(out)
 	}()
 	return
