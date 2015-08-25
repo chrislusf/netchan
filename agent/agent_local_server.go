@@ -75,7 +75,12 @@ func (r *AgentLocalServer) handleRequest(conn net.Conn) {
 
 	buf := make([]byte, 4)
 
-	cmd, err := util.ReadBytes(conn, buf)
+	f, cmd, err := util.ReadBytes(conn, buf)
+	if f != util.Data {
+		//strange if this happens
+		return
+	}
+	// println("read request flag:", f, "size", len(cmd))
 	if err != nil {
 		log.Printf("Failed to read command %s:%v", string(cmd), err)
 	}
@@ -103,13 +108,22 @@ func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
 	counter := 0
 	buf := make([]byte, 4)
 	for {
-		data, err := util.ReadBytes(r, buf)
+		f, data, err := util.ReadBytes(r, buf)
 		if err == io.EOF {
+			q.Put([]byte{byte(util.FullStop)})
+			// println("agent recv1 F->q:", "data size:", len(data))
+			break
+		}
+		if f != util.Data {
+			q.Put([]byte{byte(f)})
+			// println("agent recv2 F->q:", "data size:", len(data))
 			break
 		}
 		if err == nil {
 			counter++
+			q.Put([]byte{byte(f)})
 			q.Put(data)
+			// println("agent recv D:", string(data))
 		}
 	}
 }
@@ -128,7 +142,11 @@ func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name strin
 		for {
 			// println("wait for reader heartbeat")
 			conn.SetReadDeadline(time.Now().Add(2500 * time.Millisecond))
-			_, err := util.ReadBytes(conn, buf)
+			f, _, err := util.ReadBytes(conn, buf)
+			if f != util.Data {
+				closeSignal <- true
+				return
+			}
 			if err != nil {
 				// fmt.Printf("connection is closed? (%v)\n", err)
 				closeSignal <- true
@@ -144,11 +162,20 @@ func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name strin
 	closed := false
 	for !closed {
 		select {
-		case data := <-ch:
-			util.WriteBytes(conn, buf, data)
+		case flagBytes := <-ch:
+			f := util.ControlFlag(flagBytes[0])
+			if f == util.Data {
+				data := <-ch
+				util.WriteBytes(conn, util.Data, buf, data)
+			} else {
+				util.WriteBytes(conn, f, buf, nil)
+				// println("agent send F: channel closing")
+			}
 			counter++
 		case closed = <-closeSignal:
 			// println("finishing handling connection")
+			util.WriteBytes(conn, util.CloseChannel, buf, nil)
+			// println("agent send F: channel closed")
 			break
 		}
 	}

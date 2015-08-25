@@ -29,10 +29,11 @@ func NewChannel(name string, port int) (chan []byte, error) {
 		defer conn.Close()
 		buf := make([]byte, 4)
 
-		util.WriteBytes(conn, buf, []byte("PUT "+name))
+		util.WriteBytes(conn, util.Data, buf, []byte("PUT "+name))
 		for data := range ch {
-			util.WriteBytes(conn, buf, data)
+			util.WriteBytes(conn, util.Data, buf, data)
 		}
+		util.WriteBytes(conn, util.CloseChannel, buf, nil)
 	}()
 
 	return ch, nil

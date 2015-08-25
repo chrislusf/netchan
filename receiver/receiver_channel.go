@@ -59,23 +59,28 @@ func receiveTopicFrom(topicName, target string, ch chan []byte) {
 
 	buf := make([]byte, 4)
 
-	util.WriteBytes(conn, buf, []byte("GET "+topicName))
+	util.WriteBytes(conn, util.Data, buf, []byte("GET "+topicName))
 
-	util.WriteBytes(conn, buf, []byte("ok"))
+	util.WriteBytes(conn, util.Data, buf, []byte("ok"))
 
 	ticker := time.NewTicker(time.Millisecond * 1100)
 	defer ticker.Stop()
 	go func() {
 		buf := make([]byte, 4)
 		for range ticker.C {
-			util.WriteBytes(conn, buf, []byte("ok"))
+			util.WriteBytes(conn, util.Data, buf, []byte("ok"))
 			// print(".")
 		}
 	}()
 
 	for {
-		data, err := util.ReadBytes(conn, buf)
+		f, data, err := util.ReadBytes(conn, buf)
+		if f != util.Data {
+			// print("recieve close chan1")
+			break
+		}
 		if err == io.EOF {
+			// print("recieve close chan2")
 			break
 		}
 		if err != nil {
@@ -85,4 +90,5 @@ func receiveTopicFrom(topicName, target string, ch chan []byte) {
 		// fmt.Printf("read data %d: %v\n", len(data), err)
 		ch <- data
 	}
+	close(ch)
 }
