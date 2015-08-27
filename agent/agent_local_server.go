@@ -19,7 +19,7 @@ import (
 
 type AgentLocalServer struct {
 	Port       int
-	name2Queue map[string]queue.BackendQueue
+	name2Queue map[string]*queue.DiskBackedQueue
 	wg         sync.WaitGroup
 
 	l net.Listener
@@ -28,7 +28,7 @@ type AgentLocalServer struct {
 func NewAgentLocalServer(port int) *AgentLocalServer {
 	return &AgentLocalServer{
 		Port:       port,
-		name2Queue: make(map[string]queue.BackendQueue),
+		name2Queue: make(map[string]*queue.DiskBackedQueue),
 	}
 }
 
@@ -42,7 +42,7 @@ func (r *AgentLocalServer) Init() (err error) {
 	}
 
 	r.Port = r.l.Addr().(*net.TCPAddr).Port
-	// fmt.Println("AgentLocalServer starts on:", r.Port)
+	fmt.Println("AgentLocalServer starts on:", r.Port)
 	return
 }
 
@@ -80,15 +80,15 @@ func (r *AgentLocalServer) handleRequest(conn net.Conn) {
 		//strange if this happens
 		return
 	}
-	// println("read request flag:", f, "size", len(cmd))
+	// println("read request flag:", f, "data", string(cmd.Data()))
 	if err != nil {
-		log.Printf("Failed to read command %s:%v", string(cmd), err)
+		log.Printf("Failed to read command %s:%v", string(cmd.Data()), err)
 	}
-	if bytes.HasPrefix(cmd, []byte("PUT ")) {
-		name := string(cmd[4:])
+	if bytes.HasPrefix(cmd.Data(), []byte("PUT ")) {
+		name := string(cmd.Data()[4:])
 		r.handleWriteConnection(conn, name)
-	} else if bytes.HasPrefix(cmd, []byte("GET ")) {
-		name := string(cmd[4:])
+	} else if bytes.HasPrefix(cmd.Data(), []byte("GET ")) {
+		name := string(cmd.Data()[4:])
 		r.handleLocalReadConnection(conn, name)
 	}
 
@@ -97,8 +97,12 @@ func (r *AgentLocalServer) handleRequest(conn net.Conn) {
 func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
 	q, ok := als.name2Queue[name]
 	if !ok {
-		// println("write q is ", q)
-		als.name2Queue[name] = queue.NewDiskQueue(name+strconv.Itoa(als.Port), os.TempDir(), 1024*1024, 2500, 2*time.Second)
+		var err error
+		als.name2Queue[name], err = queue.NewDiskBackedQueue(".", name+strconv.Itoa(als.Port), 2)
+		if err != nil {
+			log.Printf("Failed to create a queue on disk: %v", err)
+			return
+		}
 		q = als.name2Queue[name]
 
 		//register stream
@@ -107,23 +111,18 @@ func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
 
 	counter := 0
 	buf := make([]byte, 4)
+	// write chan is not closed, for writes from another request
 	for {
-		f, data, err := util.ReadBytes(r, buf)
+		// f is already included in message
+		_, message, err := util.ReadBytes(r, buf)
 		if err == io.EOF {
-			q.Put([]byte{byte(util.FullStop)})
-			// println("agent recv1 F->q:", "data size:", len(data))
-			break
-		}
-		if f != util.Data {
-			q.Put([]byte{byte(f)})
-			// println("agent recv2 F->q:", "data size:", len(data))
+			// println("agent recv eof:", string(message.Bytes()))
 			break
 		}
 		if err == nil {
 			counter++
-			q.Put([]byte{byte(f)})
-			q.Put(data)
-			// println("agent recv D:", string(data))
+			q.WriteChan <- message.Bytes()
+			// println("agent recv:", string(message.Bytes()))
 		}
 	}
 }
@@ -131,11 +130,16 @@ func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
 func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name string) {
 	q, ok := als.name2Queue[name]
 	if !ok {
-		als.name2Queue[name] = queue.NewDiskQueue(name, os.TempDir(), 1024*1024, 2500, 2*time.Second)
+		var err error
+		als.name2Queue[name], err = queue.NewDiskBackedQueue(".", name+strconv.Itoa(als.Port), 2)
+		if err != nil {
+			log.Printf("Failed to create queue on disk: %v", err)
+			return
+		}
 		q = als.name2Queue[name]
 	}
 
-	closeSignal := make(chan bool)
+	closeSignal := make(chan bool, 1)
 
 	go func() {
 		buf := make([]byte, 4)
@@ -143,41 +147,58 @@ func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name strin
 			// println("wait for reader heartbeat")
 			conn.SetReadDeadline(time.Now().Add(2500 * time.Millisecond))
 			f, _, err := util.ReadBytes(conn, buf)
-			if f != util.Data {
-				closeSignal <- true
-				return
-			}
 			if err != nil {
 				// fmt.Printf("connection is closed? (%v)\n", err)
 				closeSignal <- true
+				close(closeSignal)
+				return
+			}
+			if f != util.Data {
+				closeSignal <- true
+				close(closeSignal)
 				return
 			}
 			// println("get reader heartbeat:", string(data))
 		}
 	}()
 
-	counter := 0
 	buf := make([]byte, 4)
-	ch := q.ReadChan()
-	closed := false
-	for !closed {
+
+	// loop for every read
+	done := false
+	for !done {
+		if len(q.Head) == 0 {
+			q.Mutex.Lock()
+			q.FillHead()
+			q.Mutex.Unlock()
+		}
+
+		// println("tail:", q.Tail.Len(), "head:", len(q.Head))
+
 		select {
-		case flagBytes := <-ch:
-			f := util.ControlFlag(flagBytes[0])
-			if f == util.Data {
-				data := <-ch
-				util.WriteBytes(conn, util.Data, buf, data)
-			} else {
-				util.WriteBytes(conn, f, buf, nil)
-				// println("agent send F: channel closing")
+		case messageBytes, ok := <-q.Head:
+			if !ok {
+				// println("read q head is already closed?")
+				done = true
+				break
 			}
-			counter++
-		case closed = <-closeSignal:
-			// println("finishing handling connection")
-			util.WriteBytes(conn, util.CloseChannel, buf, nil)
-			// println("agent send F: channel closed")
+			if len(messageBytes) == 0 {
+				// FIXME: how could it be possible? don't know yet
+				break
+			}
+			// println("from head:", len(messageBytes), ":", string(messageBytes))
+			m := util.LoadMessage(messageBytes)
+			util.WriteBytes(conn, buf, m)
+		case <-closeSignal:
+			// println("agent: client read connection closed")
+			done = true
 			break
 		}
+	}
+
+	if q.IsEmpty() {
+		q.Destroy()
+		delete(als.name2Queue, name)
 	}
 	// println("read connection is completed")
 }

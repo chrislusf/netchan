@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -19,11 +20,11 @@ var (
 
 	leader     = app.Command("leader", "Start a leader process")
 	leaderPort = leader.Flag("port", "listening port").Default("8930").Int()
-	leaderIp   = leader.Flag("ip", "listening IP adress").Default("").String()
+	leaderIp   = leader.Flag("ip", "listening IP adress").Default("localhost").String()
 
 	agent             = app.Command("agent", "Channel Agent")
 	agentPort         = agent.Flag("port", "agent listening port").Default("8931").Int()
-	agentLeaderServer = agent.Flag("leader", "leader address").Default("127.0.0.1:8930").String()
+	agentLeaderServer = agent.Flag("leader", "leader address").Default("localhost:8930").String()
 
 	sender          = app.Command("send", "Send data to a channel")
 	sendToChanName  = sender.Flag("to", "Name of a channel").Required().String()
@@ -42,7 +43,8 @@ func main() {
 		println("listening on", (*leaderIp)+":"+strconv.Itoa(*leaderPort))
 		l.RunLeader((*leaderIp) + ":" + strconv.Itoa(*leaderPort))
 	case sender.FullCommand():
-		sendChan, err := s.NewChannel(*sendToChanName, *senderAgentPort)
+		var wg sync.WaitGroup
+		sendChan, err := s.NewChannel(*sendToChanName, *senderAgentPort, &wg)
 		if err != nil {
 			panic(err)
 		}
@@ -66,6 +68,7 @@ func main() {
 			log.Fatal(err)
 		}
 		close(sendChan)
+		wg.Wait()
 
 	case receiver.FullCommand():
 		recvChan, err := r.NewChannel(*receiveFromChanName, *receiverLeader)

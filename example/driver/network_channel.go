@@ -2,6 +2,7 @@ package driver
 
 import (
 	"flag"
+	"sync"
 
 	"github.com/chrislusf/netchan/receiver"
 	"github.com/chrislusf/netchan/sender"
@@ -23,8 +24,8 @@ func init() {
 	flag.StringVar(&networkContext.LeaderAddress, "task.leader.address", "localhost:8930", "leader address, as host:port")
 }
 
-func GetSendChannel(name string) (chan []byte, error) {
-	return sender.NewChannel(name, networkContext.AgentPort)
+func GetSendChannel(name string, wg *sync.WaitGroup) (chan []byte, error) {
+	return sender.NewChannel(name, networkContext.AgentPort, wg)
 }
 
 func GetReadChannel(name string) (chan []byte, error) {

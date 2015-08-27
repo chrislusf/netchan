@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync"
 
 	"github.com/chrislusf/netchan/util"
 )
 
 // Talk with local agent
-func NewChannel(name string, port int) (chan []byte, error) {
+func NewChannel(name string, port int, wg *sync.WaitGroup) (chan []byte, error) {
 	ch := make(chan []byte)
 
 	// connect to a TCP server
@@ -25,15 +26,16 @@ func NewChannel(name string, port int) (chan []byte, error) {
 		return ch, fmt.Errorf("Fail to dial %s: %v", raddr, err)
 	}
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer conn.Close()
 		buf := make([]byte, 4)
-
-		util.WriteBytes(conn, util.Data, buf, []byte("PUT "+name))
+		util.WriteBytes(conn, buf, util.NewMessage(util.Data, []byte("PUT "+name)))
 		for data := range ch {
-			util.WriteBytes(conn, util.Data, buf, data)
+			util.WriteBytes(conn, buf, util.NewMessage(util.Data, data))
 		}
-		util.WriteBytes(conn, util.CloseChannel, buf, nil)
+		util.WriteBytes(conn, buf, util.NewMessage(util.CloseChannel, []byte("Done")))
 	}()
 
 	return ch, nil

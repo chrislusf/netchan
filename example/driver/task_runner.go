@@ -63,7 +63,7 @@ func (tr *TaskRunner) Run(fc *flame.FlowContext) {
 func (tr *TaskRunner) connectInputs(wg *sync.WaitGroup) {
 	for _, shard := range tr.Task.Inputs {
 		d := shard.Parent
-		readChanName := fmt.Sprintf("ds-%d-shard-%d-", d.Id, shard.Id)
+		readChanName := fmt.Sprintf("ct-%d-ds-%d-shard-%d-", tr.option.ContextId, d.Id, shard.Id)
 		// println("trying to read from:", readChanName)
 		rawChan, err := GetReadChannel(readChanName)
 		if err != nil {
@@ -77,9 +77,9 @@ func (tr *TaskRunner) connectOutputs(wg *sync.WaitGroup) {
 	for _, shard := range tr.Task.Outputs {
 		d := shard.Parent
 
-		writeChanName := fmt.Sprintf("ds-%d-shard-%d-", d.Id, shard.Id)
+		writeChanName := fmt.Sprintf("ct-%d-ds-%d-shard-%d-", tr.option.ContextId, d.Id, shard.Id)
 		// println("writing to:", writeChanName)
-		rawChan, err := GetSendChannel(writeChanName)
+		rawChan, err := GetSendChannel(writeChanName, wg)
 		if err != nil {
 			log.Panic(err)
 		}
