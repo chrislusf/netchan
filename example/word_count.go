@@ -23,14 +23,15 @@ func NewKeyValue(key, value string) KeyValue {
 func main() {
 	flag.Parse()
 
-	// test1()
+	test1()
+
 	test2()
 
 }
 
 func test1() {
 	flame.NewContext().TextFile(
-		"/etc/passwd", 1,
+		"/etc/passwd", 3,
 	).Filter(func(line string) bool {
 		println(line)
 		return !strings.HasPrefix(line, "#")
@@ -51,9 +52,8 @@ func test2() {
 	flame.NewContext().TextFile(
 		"/etc/hosts", 7,
 	).Partition(
-		3,
+		2,
 	).Map(func(line string) string {
-		print(".")
 		return line
 	}).Sort(func(a string, b string) bool {
 		if strings.Compare(a, b) < 0 {

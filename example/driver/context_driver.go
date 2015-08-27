@@ -20,7 +20,7 @@ func init() {
 	flag.BoolVar(&driverOption.ShouldStart, "driver", false, "start in driver mode")
 	flag.StringVar(&driverOption.Leader, "driver.leader", "localhost:8930", "leader server")
 
-	flame.RegisterRunner(NewFlowContextDriver(&driverOption))
+	flame.RegisterContextRunner(NewFlowContextDriver(&driverOption))
 }
 
 type FlowContextDriver struct {
@@ -31,7 +31,11 @@ func NewFlowContextDriver(option *DriverOption) *FlowContextDriver {
 	return &FlowContextDriver{option: option}
 }
 
-func (fcd *FlowContextDriver) ShouldRun() bool {
+func (fcd *FlowContextDriver) IsDriverMode() bool {
+	return fcd.option.ShouldStart
+}
+
+func (fcd *FlowContextDriver) ShouldRun(fc *flame.FlowContext) bool {
 	return fcd.option.ShouldStart
 }
 

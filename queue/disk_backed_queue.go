@@ -50,8 +50,6 @@ func NewDiskBackedQueue(dir, name string, inMemoryItemLimit int) (*DiskBackedQue
 
 func (q *DiskBackedQueue) Destroy() {
 	// println("destroying tail files")
-	close(q.WriteChan)
-	close(q.Head)
 	q.Tail.Destroy()
 }
 

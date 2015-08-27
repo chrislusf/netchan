@@ -24,7 +24,7 @@ func init() {
 	flag.IntVar(&taskOption.StepId, "task.step.id", -1, "step id")
 	flag.IntVar(&taskOption.TaskId, "task.task.id", -1, "task id")
 
-	flame.RegisterRunner(NewTaskRunner(&taskOption))
+	flame.RegisterTaskRunner(NewTaskRunner(&taskOption))
 }
 
 type TaskRunner struct {
@@ -36,19 +36,17 @@ func NewTaskRunner(option *TaskOption) *TaskRunner {
 	return &TaskRunner{option: option}
 }
 
-func (tr *TaskRunner) ShouldRun() bool {
-	fmt.Printf("task runner option %+v\n", tr.option)
-	return tr.option.TaskId != -1 && tr.option.StepId != -1 && tr.option.ContextId != -1
+func (tr *TaskRunner) IsTaskMode() bool {
+	return tr.option.TaskId >= 0 && tr.option.StepId >= 0 && tr.option.ContextId >= 0
+}
+
+func (tr *TaskRunner) ShouldRun(fc *flame.FlowContext, step *flame.Step, task *flame.Task) bool {
+	return tr.option.TaskId == task.Id && tr.option.StepId == step.Id && tr.option.ContextId == fc.Id
 }
 
 // if this should not run, return false
-func (tr *TaskRunner) Run(fc *flame.FlowContext) {
-	// 1. setup connection to driver program
-	// 2. receive the context
-	// 3. find the task
-	ctx := flame.Contexts[tr.option.ContextId]
-	step := ctx.Steps[tr.option.StepId]
-	tr.Task = step.Tasks[tr.option.TaskId]
+func (tr *TaskRunner) Run(fc *flame.FlowContext, step *flame.Step, task *flame.Task) {
+	tr.Task = task
 
 	// 4. setup task input and output channels
 	var wg sync.WaitGroup

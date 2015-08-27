@@ -8,9 +8,7 @@ import (
 	"github.com/chrislusf/netchan/sender"
 )
 
-var (
-	name = flag.String("name", "worker", "a service name")
-)
+var ()
 
 type NetworkContext struct {
 	LeaderAddress string
