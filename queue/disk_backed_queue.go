@@ -3,6 +3,7 @@ package queue
 import (
 	"log"
 	"sync"
+	"time"
 )
 
 // DiskBackedQueue keeps Head in memory, tail spills over to disk
@@ -11,7 +12,9 @@ type DiskBackedQueue struct {
 	Head          chan []byte
 	Tail          *DiskByteQueue
 	WriteChan     chan []byte
-	Mutex         sync.Mutex // lock updates to Head
+	Mutex         sync.Mutex   // lock updates to Head
+	ticker        *time.Ticker // FIXME: hack to push disk item to queue head sometimes
+	killChan      chan bool
 }
 
 func NewDiskBackedQueue(dir, name string, inMemoryItemLimit int) (*DiskBackedQueue, error) {
@@ -21,6 +24,8 @@ func NewDiskBackedQueue(dir, name string, inMemoryItemLimit int) (*DiskBackedQue
 		Head:          make(chan []byte, inMemoryItemLimit),
 		Tail:          tail,
 		WriteChan:     make(chan []byte),
+		ticker:        time.NewTicker(200 * time.Millisecond),
+		killChan:      make(chan bool, 1),
 	}
 
 	go func() {
@@ -42,6 +47,17 @@ func NewDiskBackedQueue(dir, name string, inMemoryItemLimit int) (*DiskBackedQue
 					q.Tail.Enqueue(data)
 				}
 				q.Mutex.Unlock()
+			case _, ok := <-q.ticker.C:
+				// move data to Head, without it, it will deadlock when
+				// q.Tail has data, but q.Head is waiting
+				if !ok {
+					return
+				}
+				q.Mutex.Lock()
+				q.FillHead()
+				q.Mutex.Unlock()
+			case <-q.killChan:
+				return
 			}
 		}
 	}()
@@ -49,7 +65,8 @@ func NewDiskBackedQueue(dir, name string, inMemoryItemLimit int) (*DiskBackedQue
 }
 
 func (q *DiskBackedQueue) Destroy() {
-	// println("destroying tail files")
+	q.killChan <- true
+	q.ticker.Stop()
 	q.Tail.Destroy()
 }
 

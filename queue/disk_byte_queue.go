@@ -130,10 +130,10 @@ func (q *DiskByteQueue) Destroy() {
 	q.inFile.Close()
 	q.outFile.Close()
 	if err := os.Remove(q.filePrefix + ".out"); err != nil {
-		println("Failed to remove out file", q.filePrefix+".out", err.Error())
+		// println("Failed to remove out file", q.filePrefix+".out", err.Error())
 	}
 	if err := os.Remove(q.filePrefix + ".in"); err != nil {
-		println("Failed to remove in file", q.filePrefix+".in", err.Error())
+		// println("Failed to remove in file", q.filePrefix+".in", err.Error())
 	}
 	return
 }

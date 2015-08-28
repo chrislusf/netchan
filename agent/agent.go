@@ -8,9 +8,9 @@ type AgentServer struct {
 	leader string
 }
 
-func NewAgentServer(localPort int, leader string) *AgentServer {
+func NewAgentServer(dir string, localPort int, leader string) *AgentServer {
 	a := &AgentServer{leader: leader}
-	a.Local = NewAgentLocalServer(localPort)
+	a.Local = NewAgentLocalServer(dir, localPort)
 
 	err := a.Local.Init()
 	if err != nil {

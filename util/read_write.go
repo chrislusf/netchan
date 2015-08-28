@@ -46,6 +46,9 @@ func ReadBytes(r io.Reader, lenBuf []byte) (flag ControlFlag, m *Message, err er
 	size := BytesToUint32(lenBuf)
 	data := make([]byte, int(size))
 	_, err = io.ReadAtLeast(r, data, int(size))
+	if err != nil {
+		return CloseChannel, NewMessage(CloseChannel, []byte("reader is closed")), err
+	}
 	message := LoadMessage(data)
 	// println("read size:", size, string(message.Data()), ".")
 	return message.Flag(), message, nil

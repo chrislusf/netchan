@@ -31,10 +31,15 @@ func NewHeartBeater(name string, servicePort int, leader string) *HeartBeater {
 }
 
 // Starts heart beating
-func (h *HeartBeater) Start() {
+func (h *HeartBeater) StartHeartBeat(killChan chan bool) {
 	for {
 		h.beat()
-		time.Sleep(time.Duration(rand.Int63n(h.SleepSeconds/2)+h.SleepSeconds/2) * time.Second)
+		select {
+		case <-killChan:
+			return
+		default:
+			time.Sleep(time.Duration(rand.Int63n(h.SleepSeconds/2)+h.SleepSeconds/2) * time.Second)
+		}
 	}
 }
 

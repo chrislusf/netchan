@@ -23,6 +23,7 @@ var (
 	leaderIp   = leader.Flag("ip", "listening IP adress").Default("localhost").String()
 
 	agent             = app.Command("agent", "Channel Agent")
+	agentDir          = agent.Flag("dir", "agent folder to store computed data").Default(os.TempDir()).String()
 	agentPort         = agent.Flag("port", "agent listening port").Default("8931").Int()
 	agentLeaderServer = agent.Flag("leader", "leader address").Default("localhost:8930").String()
 
@@ -80,7 +81,7 @@ func main() {
 		}
 
 	case agent.FullCommand():
-		agentServer := a.NewAgentServer(*agentPort, *agentLeaderServer)
+		agentServer := a.NewAgentServer(*agentDir, *agentPort, *agentLeaderServer)
 		agentServer.Run()
 	}
 }

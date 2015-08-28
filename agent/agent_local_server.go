@@ -17,18 +17,40 @@ import (
 	"github.com/chrislusf/netchan/util"
 )
 
+type DataStore struct {
+	Queue           *queue.DiskBackedQueue
+	killHeartBeater chan bool
+}
+
+func NewDataStore(q *queue.DiskBackedQueue) *DataStore {
+	return &DataStore{
+		Queue:           q,
+		killHeartBeater: make(chan bool, 1),
+	}
+}
+
+func (ds *DataStore) Destroy() {
+	ds.killHeartBeater <- true
+	ds.Queue.Destroy()
+}
+
 type AgentLocalServer struct {
-	Port       int
-	name2Queue map[string]*queue.DiskBackedQueue
-	wg         sync.WaitGroup
+	Port              int
+	name2Queue        map[string]*DataStore
+	dir               string
+	inMemoryItemLimit int
+	name2QueueLock    sync.Mutex
+	wg                sync.WaitGroup
 
 	l net.Listener
 }
 
-func NewAgentLocalServer(port int) *AgentLocalServer {
+func NewAgentLocalServer(dir string, port int) *AgentLocalServer {
 	return &AgentLocalServer{
-		Port:       port,
-		name2Queue: make(map[string]*queue.DiskBackedQueue),
+		Port:              port,
+		dir:               dir,
+		inMemoryItemLimit: 1000,
+		name2Queue:        make(map[string]*DataStore),
 	}
 }
 
@@ -95,19 +117,22 @@ func (r *AgentLocalServer) handleRequest(conn net.Conn) {
 }
 
 func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
-	q, ok := als.name2Queue[name]
+	als.name2QueueLock.Lock()
+	ds, ok := als.name2Queue[name]
 	if !ok {
-		var err error
-		als.name2Queue[name], err = queue.NewDiskBackedQueue(".", name+strconv.Itoa(als.Port), 2)
+		q, err := queue.NewDiskBackedQueue(als.dir, name+strconv.Itoa(als.Port), als.inMemoryItemLimit)
 		if err != nil {
 			log.Printf("Failed to create a queue on disk: %v", err)
+			als.name2QueueLock.Unlock()
 			return
 		}
-		q = als.name2Queue[name]
+		als.name2Queue[name] = NewDataStore(q)
+		ds = als.name2Queue[name]
 
 		//register stream
-		go client.NewHeartBeater(name, als.Port, "localhost:8930").Start()
+		go client.NewHeartBeater(name, als.Port, "localhost:8930").StartHeartBeat(ds.killHeartBeater)
 	}
+	als.name2QueueLock.Unlock()
 
 	counter := 0
 	buf := make([]byte, 4)
@@ -121,25 +146,30 @@ func (als *AgentLocalServer) handleWriteConnection(r io.Reader, name string) {
 		}
 		if err == nil {
 			counter++
-			q.WriteChan <- message.Bytes()
+			ds.Queue.WriteChan <- message.Bytes()
 			// println("agent recv:", string(message.Bytes()))
 		}
 	}
 }
 
 func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name string) {
-	q, ok := als.name2Queue[name]
+	als.name2QueueLock.Lock()
+	ds, ok := als.name2Queue[name]
 	if !ok {
-		var err error
-		als.name2Queue[name], err = queue.NewDiskBackedQueue(".", name+strconv.Itoa(als.Port), 2)
+		q, err := queue.NewDiskBackedQueue(als.dir, name+strconv.Itoa(als.Port), als.inMemoryItemLimit)
 		if err != nil {
-			log.Printf("Failed to create queue on disk: %v", err)
+			// log.Printf("Failed to create queue on disk: %v", err)
+			als.name2QueueLock.Unlock()
 			return
 		}
-		q = als.name2Queue[name]
+		als.name2Queue[name] = NewDataStore(q)
+		ds = als.name2Queue[name]
 	}
+	als.name2QueueLock.Unlock()
 
 	closeSignal := make(chan bool, 1)
+
+	q := ds.Queue
 
 	go func() {
 		buf := make([]byte, 4)
@@ -158,7 +188,14 @@ func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name strin
 				close(closeSignal)
 				return
 			}
-			// println("get reader heartbeat:", string(data))
+			// println("get", name, "heartbeat:", string(m.Bytes()))
+			if len(q.Head) == 0 {
+				q.Mutex.Lock()
+				q.FillHead()
+				q.Mutex.Unlock()
+			} else {
+				println(name, "head has", len(q.Head))
+			}
 		}
 	}()
 
@@ -178,27 +215,29 @@ func (als *AgentLocalServer) handleLocalReadConnection(conn net.Conn, name strin
 		select {
 		case messageBytes, ok := <-q.Head:
 			if !ok {
-				// println("read q head is already closed?")
+				println(name, "read q head is already closed?")
 				done = true
 				break
 			}
 			if len(messageBytes) == 0 {
 				// FIXME: how could it be possible? don't know yet
+				log.Printf("%s Somehow this happens?", name)
 				break
 			}
-			// println("from head:", len(messageBytes), ":", string(messageBytes))
 			m := util.LoadMessage(messageBytes)
+			// println(name, "send:", len(messageBytes), ":", string(m.Data()))
 			util.WriteBytes(conn, buf, m)
 		case <-closeSignal:
 			// println("agent: client read connection closed")
 			done = true
-			break
 		}
 	}
 
+	als.name2QueueLock.Lock()
 	if q.IsEmpty() {
-		q.Destroy()
+		ds.Destroy()
 		delete(als.name2Queue, name)
 	}
+	als.name2QueueLock.Unlock()
 	// println("read connection is completed")
 }
