@@ -1,0 +1,8 @@
+package proto
+
+// protoc -I=$SRC_DIR --cpp_out=$DST_DIR $SRC_DIR/filename.proto
+// protoc --go_out=. control_message.proto
+
+message ControlMessage {
+	
+}
