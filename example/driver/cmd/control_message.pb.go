@@ -184,15 +184,23 @@ func (m *StartRequest) GetInputs() []*NetChan {
 }
 
 type StartResponse struct {
-	Error            *string    `protobuf:"bytes,1,opt,name=error" json:"error,omitempty"`
-	Stderr           *NetChan   `protobuf:"bytes,2,opt,name=stderr" json:"stderr,omitempty"`
-	Outputs          []*NetChan `protobuf:"bytes,3,rep,name=outputs" json:"outputs,omitempty"`
+	Pid              *int32     `protobuf:"varint,1,req,name=pid" json:"pid,omitempty"`
+	Error            *string    `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
+	Stderr           *NetChan   `protobuf:"bytes,3,opt,name=stderr" json:"stderr,omitempty"`
+	Outputs          []*NetChan `protobuf:"bytes,4,rep,name=outputs" json:"outputs,omitempty"`
 	XXX_unrecognized []byte     `json:"-"`
 }
 
 func (m *StartResponse) Reset()         { *m = StartResponse{} }
 func (m *StartResponse) String() string { return proto.CompactTextString(m) }
 func (*StartResponse) ProtoMessage()    {}
+
+func (m *StartResponse) GetPid() int32 {
+	if m != nil && m.Pid != nil {
+		return *m.Pid
+	}
+	return 0
+}
 
 func (m *StartResponse) GetError() string {
 	if m != nil && m.Error != nil {

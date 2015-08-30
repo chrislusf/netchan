@@ -34,7 +34,8 @@ message StartRequest {
 }
 
 message StartResponse {
-	optional string error = 1;
-	optional NetChan stderr = 2;
-	repeated NetChan outputs = 3;
+	required int32 pid = 1;
+	optional string error = 2;
+	optional NetChan stderr = 3;
+	repeated NetChan outputs = 4;
 }
