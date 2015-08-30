@@ -3,7 +3,7 @@
 // DO NOT EDIT!
 
 /*
-Package proto is a generated protocol buffer package.
+Package cmd is a generated protocol buffer package.
 
 It is generated from these files:
 	control_message.proto
@@ -14,13 +14,13 @@ It has these top-level messages:
 	StartRequest
 	StartResponse
 */
-package proto
+package cmd
 
-import proto1 "github.com/golang/protobuf/proto"
+import proto "github.com/golang/protobuf/proto"
 import math "math"
 
 // Reference imports to suppress errors if they are not otherwise used.
-var _ = proto1.Marshal
+var _ = proto.Marshal
 var _ = math.Inf
 
 type ControlMessage_Type int32
@@ -60,10 +60,10 @@ func (x ControlMessage_Type) Enum() *ControlMessage_Type {
 	return p
 }
 func (x ControlMessage_Type) String() string {
-	return proto1.EnumName(ControlMessage_Type_name, int32(x))
+	return proto.EnumName(ControlMessage_Type_name, int32(x))
 }
 func (x *ControlMessage_Type) UnmarshalJSON(data []byte) error {
-	value, err := proto1.UnmarshalJSONEnum(ControlMessage_Type_value, data, "ControlMessage_Type")
+	value, err := proto.UnmarshalJSONEnum(ControlMessage_Type_value, data, "ControlMessage_Type")
 	if err != nil {
 		return err
 	}
@@ -72,13 +72,13 @@ func (x *ControlMessage_Type) UnmarshalJSON(data []byte) error {
 }
 
 type ControlMessage struct {
-	Type             *ControlMessage_Type `protobuf:"varint,1,req,name=type,enum=proto.ControlMessage_Type" json:"type,omitempty"`
+	Type             *ControlMessage_Type `protobuf:"varint,1,req,name=type,enum=cmd.ControlMessage_Type" json:"type,omitempty"`
 	StartRequest     *StartRequest        `protobuf:"bytes,2,opt,name=startRequest" json:"startRequest,omitempty"`
 	XXX_unrecognized []byte               `json:"-"`
 }
 
 func (m *ControlMessage) Reset()         { *m = ControlMessage{} }
-func (m *ControlMessage) String() string { return proto1.CompactTextString(m) }
+func (m *ControlMessage) String() string { return proto.CompactTextString(m) }
 func (*ControlMessage) ProtoMessage()    {}
 
 func (m *ControlMessage) GetType() ControlMessage_Type {
@@ -102,7 +102,7 @@ type NetChan struct {
 }
 
 func (m *NetChan) Reset()         { *m = NetChan{} }
-func (m *NetChan) String() string { return proto1.CompactTextString(m) }
+func (m *NetChan) String() string { return proto.CompactTextString(m) }
 func (*NetChan) ProtoMessage()    {}
 
 func (m *NetChan) GetServer() string {
@@ -130,7 +130,7 @@ type StartRequest struct {
 }
 
 func (m *StartRequest) Reset()         { *m = StartRequest{} }
-func (m *StartRequest) String() string { return proto1.CompactTextString(m) }
+func (m *StartRequest) String() string { return proto.CompactTextString(m) }
 func (*StartRequest) ProtoMessage()    {}
 
 func (m *StartRequest) GetPath() string {
@@ -182,7 +182,7 @@ type StartResponse struct {
 }
 
 func (m *StartResponse) Reset()         { *m = StartResponse{} }
-func (m *StartResponse) String() string { return proto1.CompactTextString(m) }
+func (m *StartResponse) String() string { return proto.CompactTextString(m) }
 func (*StartResponse) ProtoMessage()    {}
 
 func (m *StartResponse) GetError() string {
@@ -200,5 +200,5 @@ func (m *StartResponse) GetOutputs() []*NetChan {
 }
 
 func init() {
-	proto1.RegisterEnum("proto.ControlMessage_Type", ControlMessage_Type_name, ControlMessage_Type_value)
+	proto.RegisterEnum("cmd.ControlMessage_Type", ControlMessage_Type_name, ControlMessage_Type_value)
 }
