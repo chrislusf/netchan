@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/chrislusf/netchan/example/driver/cmd"
 	"github.com/chrislusf/netchan/queue"
 	"github.com/chrislusf/netchan/util"
+	"github.com/golang/protobuf/proto"
 )
 
 type DataStore struct {
@@ -84,6 +86,7 @@ func (r *AgentServer) Run() {
 		// Handle connections in a new goroutine.
 		r.wg.Add(1)
 		go func() {
+			defer r.wg.Done()
 			defer conn.Close()
 			r.handleRequest(conn)
 		}()
@@ -97,26 +100,36 @@ func (r *AgentServer) Stop() {
 
 // Handles incoming requests.
 func (r *AgentServer) handleRequest(conn net.Conn) {
-	defer r.wg.Done()
-	defer conn.Close()
 
 	buf := make([]byte, 4)
 
-	f, cmd, err := util.ReadBytes(conn, buf)
+	f, message, err := util.ReadBytes(conn, buf)
 	if f != util.Data {
 		//strange if this happens
 		return
 	}
-	// println("read request flag:", f, "data", string(cmd.Data()))
+	// println("read request flag:", f, "data", string(message.Data()))
 	if err != nil {
-		log.Printf("Failed to read command %s:%v", string(cmd.Data()), err)
+		log.Printf("Failed to read command %s:%v", string(message.Data()), err)
 	}
-	if bytes.HasPrefix(cmd.Data(), []byte("PUT ")) {
-		name := string(cmd.Data()[4:])
+	if bytes.HasPrefix(message.Data(), []byte("PUT ")) {
+		name := string(message.Data()[4:])
 		r.handleWriteConnection(conn, name)
-	} else if bytes.HasPrefix(cmd.Data(), []byte("GET ")) {
-		name := string(cmd.Data()[4:])
+	} else if bytes.HasPrefix(message.Data(), []byte("GET ")) {
+		name := string(message.Data()[4:])
 		r.handleLocalReadConnection(conn, name)
+	} else if bytes.HasPrefix(message.Data(), []byte("CMD ")) {
+		newCmd := &cmd.ControlMessage{}
+		err := proto.Unmarshal(message.Data()[4:], newCmd)
+		if err != nil {
+			log.Fatal("unmarshaling error: ", err)
+		}
+		reply := r.handleCommandConnection(newCmd)
+		data, err := proto.Marshal(reply)
+		if err != nil {
+			log.Fatal("marshaling error: ", err)
+		}
+		conn.Write(data)
 	}
 
 }
