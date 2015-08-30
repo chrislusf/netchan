@@ -16,6 +16,7 @@ message ControlMessage {
 	required Type type = 1;
 
 	optional StartRequest startRequest = 2;
+	optional StartResponse startResponse = 3;
 }
 
 message NetChan {
@@ -34,5 +35,6 @@ message StartRequest {
 
 message StartResponse {
 	optional string error = 1;
-	repeated NetChan outputs = 2;
+	optional NetChan stderr = 2;
+	repeated NetChan outputs = 3;
 }

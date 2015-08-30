@@ -74,6 +74,7 @@ func (x *ControlMessage_Type) UnmarshalJSON(data []byte) error {
 type ControlMessage struct {
 	Type             *ControlMessage_Type `protobuf:"varint,1,req,name=type,enum=cmd.ControlMessage_Type" json:"type,omitempty"`
 	StartRequest     *StartRequest        `protobuf:"bytes,2,opt,name=startRequest" json:"startRequest,omitempty"`
+	StartResponse    *StartResponse       `protobuf:"bytes,3,opt,name=startResponse" json:"startResponse,omitempty"`
 	XXX_unrecognized []byte               `json:"-"`
 }
 
@@ -91,6 +92,13 @@ func (m *ControlMessage) GetType() ControlMessage_Type {
 func (m *ControlMessage) GetStartRequest() *StartRequest {
 	if m != nil {
 		return m.StartRequest
+	}
+	return nil
+}
+
+func (m *ControlMessage) GetStartResponse() *StartResponse {
+	if m != nil {
+		return m.StartResponse
 	}
 	return nil
 }
@@ -177,7 +185,8 @@ func (m *StartRequest) GetInputs() []*NetChan {
 
 type StartResponse struct {
 	Error            *string    `protobuf:"bytes,1,opt,name=error" json:"error,omitempty"`
-	Outputs          []*NetChan `protobuf:"bytes,2,rep,name=outputs" json:"outputs,omitempty"`
+	Stderr           *NetChan   `protobuf:"bytes,2,opt,name=stderr" json:"stderr,omitempty"`
+	Outputs          []*NetChan `protobuf:"bytes,3,rep,name=outputs" json:"outputs,omitempty"`
 	XXX_unrecognized []byte     `json:"-"`
 }
 
@@ -190,6 +199,13 @@ func (m *StartResponse) GetError() string {
 		return *m.Error
 	}
 	return ""
+}
+
+func (m *StartResponse) GetStderr() *NetChan {
+	if m != nil {
+		return m.Stderr
+	}
+	return nil
 }
 
 func (m *StartResponse) GetOutputs() []*NetChan {
