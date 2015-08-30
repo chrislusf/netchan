@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrislusf/netchan/example/driver/cmd"
 	"github.com/chrislusf/netchan/queue"
+	"github.com/chrislusf/netchan/service_discovery/client"
 	"github.com/chrislusf/netchan/util"
 	"github.com/golang/protobuf/proto"
 )
@@ -75,20 +76,24 @@ func (r *AgentServer) Init() (err error) {
 	return
 }
 
-func (r *AgentServer) Run() {
+func (as *AgentServer) Run() {
+	//register agent
+	killHeartBeaterChan := make(chan bool, 1)
+	go client.NewHeartBeater("a1", as.Port, "localhost:8930").StartHeartBeat(killHeartBeaterChan)
+
 	for {
 		// Listen for an incoming connection.
-		conn, err := r.l.Accept()
+		conn, err := as.l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting: ", err.Error())
 			os.Exit(1)
 		}
 		// Handle connections in a new goroutine.
-		r.wg.Add(1)
+		as.wg.Add(1)
 		go func() {
-			defer r.wg.Done()
+			defer as.wg.Done()
 			defer conn.Close()
-			r.handleRequest(conn)
+			as.handleRequest(conn)
 		}()
 	}
 }
@@ -106,9 +111,10 @@ func (r *AgentServer) handleRequest(conn net.Conn) {
 	f, message, err := util.ReadBytes(conn, buf)
 	if f != util.Data {
 		//strange if this happens
+		println("read", len(message.Bytes()), "request flag:", f, "data", string(message.Data()))
 		return
 	}
-	// println("read request flag:", f, "data", string(message.Data()))
+
 	if err != nil {
 		log.Printf("Failed to read command %s:%v", string(message.Data()), err)
 	}
@@ -124,12 +130,14 @@ func (r *AgentServer) handleRequest(conn net.Conn) {
 		if err != nil {
 			log.Fatal("unmarshaling error: ", err)
 		}
-		reply := r.handleCommandConnection(newCmd)
-		data, err := proto.Marshal(reply)
-		if err != nil {
-			log.Fatal("marshaling error: ", err)
+		reply := r.handleCommandConnection(conn, newCmd)
+		if reply != nil {
+			data, err := proto.Marshal(reply)
+			if err != nil {
+				log.Fatal("marshaling error: ", err)
+			}
+			conn.Write(data)
 		}
-		conn.Write(data)
 	}
 
 }

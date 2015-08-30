@@ -63,3 +63,20 @@ func WriteBytes(w io.Writer, lenBuf []byte, m *Message) {
 	w.Write(lenBuf)
 	w.Write(rawData)
 }
+
+func WriteData(w io.Writer, lenBuf []byte, dataList ...[]byte) error {
+	size := 1 // start with 1 flag byte
+	for _, d := range dataList {
+		size += len(d)
+	}
+	Uint32toBytes(lenBuf, uint32(size))
+	w.Write(lenBuf)
+	for _, d := range dataList {
+		w.Write(d)
+	}
+	lenBuf[0] = byte(Data)
+	w.Write(lenBuf[0:1])
+
+	// FIXME: get and return proper error here
+	return nil
+}

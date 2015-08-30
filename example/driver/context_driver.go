@@ -3,11 +3,12 @@ package driver
 import (
 	"flag"
 	"os"
-	"os/exec"
 	"strconv"
 	"sync"
 
+	"github.com/chrislusf/netchan/example/driver/cmd"
 	"github.com/chrislusf/netchan/example/flame"
+	"github.com/golang/protobuf/proto"
 )
 
 type DriverOption struct {
@@ -50,7 +51,8 @@ func (fcd *FlowContextDriver) Run(fc *flame.FlowContext) {
 			wg.Add(1)
 			go func(stepId, taskId int, task *flame.Task) {
 				defer wg.Done()
-				cmd := exec.Command(os.Args[0],
+				dir, _ := os.Getwd()
+				cmd := NewStartRequest(os.Args[0], dir,
 					"-task.context.id",
 					strconv.Itoa(fc.Id),
 					"-task.step.id",
@@ -58,11 +60,22 @@ func (fcd *FlowContextDriver) Run(fc *flame.FlowContext) {
 					"-task.task.id",
 					strconv.Itoa(taskId),
 				)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				cmd.Run()
+				if err := RemoteExecute("localhost:8930", "a1", cmd); err != nil {
+					println("exeuction error:", err.Error())
+				}
 			}(stepId, taskId, task)
 		}
 	}
 	wg.Wait()
+}
+
+func NewStartRequest(path string, dir string, args ...string) *cmd.ControlMessage {
+	return &cmd.ControlMessage{
+		Type: cmd.ControlMessage_StartRequest.Enum(),
+		StartRequest: &cmd.StartRequest{
+			Path: proto.String(path),
+			Args: args,
+			Dir:  proto.String(dir),
+		},
+	}
 }

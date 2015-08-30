@@ -2,40 +2,47 @@ package agent
 
 import (
 	"log"
-	"os"
+	"net"
 	"os/exec"
 
 	"github.com/chrislusf/netchan/example/driver/cmd"
+	"github.com/golang/protobuf/proto"
 )
 
-func (as *AgentServer) handleCommandConnection(
+func (as *AgentServer) handleCommandConnection(conn net.Conn,
 	command *cmd.ControlMessage) *cmd.ControlMessage {
 	reply := &cmd.ControlMessage{}
 	if command.GetType() == cmd.ControlMessage_StartRequest {
-		*reply.Type = cmd.ControlMessage_StartResponse
-		reply.StartResponse = as.handleStart(command.StartRequest)
+		reply.Type = cmd.ControlMessage_StartResponse.Enum()
+		reply.StartResponse = as.handleStart(conn, command.StartRequest)
 	}
-	return reply
+	return nil
 }
 
-func (as *AgentServer) handleStart(
+func (as *AgentServer) handleStart(conn net.Conn,
 	startRequest *cmd.StartRequest) *cmd.StartResponse {
 	reply := &cmd.StartResponse{}
+
+	// println("received command:", *startRequest.Path)
 
 	cmd := exec.Command(
 		*startRequest.Path,
 		startRequest.Args...,
 	)
 	cmd.Env = startRequest.Envs
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Dir = *startRequest.Dir
+	cmd.Stdout = conn
+	cmd.Stderr = conn
 	err := cmd.Start()
 	if err != nil {
-		log.Printf("Failed to start commend %s: %v", *startRequest.Path, err)
+		log.Printf("Failed to start command %s under %s: %v",
+			cmd.Path, cmd.Dir, err)
 		*reply.Error = err.Error()
 	} else {
-		*reply.Pid = int32(cmd.Process.Pid)
+		reply.Pid = proto.Int32(int32(cmd.Process.Pid))
 	}
 
-	return reply
+	cmd.Wait()
+
+	return nil // this will not reach here until
 }
