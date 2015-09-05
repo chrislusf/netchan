@@ -6,7 +6,7 @@ import (
 	"github.com/chrislusf/netchan/example/lib"
 )
 
-func (d *Dataset) EnsureShard(n int) {
+func (d *Dataset) SetupShard(n int) {
 	ctype := reflect.ChanOf(reflect.BothDir, d.Type)
 	for i := 0; i < n; i++ {
 		ds := &DatasetShard{
@@ -20,8 +20,28 @@ func (d *Dataset) EnsureShard(n int) {
 }
 
 // hash data or by data key, return a new dataset
+// This is devided into 2 steps:
+// 1. Each record is sharded to a local shard
+// 2. The destination shard will collect its child shards and merge into one
 func (d *Dataset) Partition(shard int) *Dataset {
 	return d.partition_scatter(shard).partition_collect(shard)
+}
+
+func HashByKey(input reflect.Value, shard int) int {
+	v := guessKey(input)
+
+	var x int
+	switch v.Kind() {
+	case reflect.Int:
+		x = int(v.Int()) % shard
+	case reflect.String:
+		x = int(lib.Hash([]byte(v.String()))) % shard
+	case reflect.Slice:
+		x = int(lib.Hash(v.Bytes())) % shard
+	default:
+		println("unexpected key to hash:", v.Kind())
+	}
+	return x
 }
 
 func (d *Dataset) partition_scatter(shard int) (ret *Dataset) {
@@ -29,17 +49,7 @@ func (d *Dataset) partition_scatter(shard int) (ret *Dataset) {
 	step := d.context.AddOneToEveryNStep(d, shard, ret)
 	step.Function = func(task *Task) {
 		for input := range task.InputChan() {
-			v := guessKey(input)
-
-			var x int
-			switch v.Kind() {
-			case reflect.Int:
-				x = int(v.Int()) % shard
-			case reflect.String:
-				x = int(lib.Hash([]byte(v.String()))) % shard
-			case reflect.Slice:
-				x = int(lib.Hash(v.Bytes())) % shard
-			}
+			x := HashByKey(input, shard)
 			task.Outputs[x].WriteChan.Send(input)
 		}
 		for _, out := range task.Outputs {

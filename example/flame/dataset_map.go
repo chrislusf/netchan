@@ -4,6 +4,14 @@ import (
 	"reflect"
 )
 
+// map can work with multiple kinds of inputs and outputs
+// 1. If 2 inputs, the first input is key, the second input is value
+// 2. If 1 input, the input is value.
+// 3. If last input is channel, the output goes into the channel
+// 4. If 2 output, the first output is key, the second output is value
+// 5. If 1 output, the output is value.
+// 6. A map function may not necessarily have any output.
+//
 // f(A, chan B)
 // input, type is same as parent Dataset's type
 // output chan, element type is same as current Dataset's type
@@ -52,6 +60,24 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 					outChan.Send(outs[0])
 				}
 			}
+		} else if ft.NumOut() == 2 {
+			outChan := task.Outputs[0].WriteChan
+			defer outChan.Close()
+			if d.Type.Kind() == reflect.Struct && ft.NumIn() != 1 {
+				invokeMapFunc = func(input reflect.Value) {
+					var args []reflect.Value
+					for i := 0; i < input.NumField(); i++ {
+						args = append(args, input.Field(i))
+					}
+					outs := fn.Call(args)
+					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0], Value: outs[1]}))
+				}
+			} else {
+				invokeMapFunc = func(input reflect.Value) {
+					outs := fn.Call([]reflect.Value{input})
+					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0], Value: outs[1]}))
+				}
+			}
 		} else {
 			if d.Type.Kind() == reflect.Struct && ft.NumIn() != 1 {
 				invokeMapFunc = func(input reflect.Value) {
@@ -61,7 +87,16 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 					}
 					fn.Call(args)
 				}
+			} else if d.Type.Kind() == reflect.Slice && ft.NumIn() != 1 {
+				invokeMapFunc = func(input reflect.Value) {
+					var args []reflect.Value
+					for i := 0; i < input.Len(); i++ {
+						args = append(args, input.Index(i).Interface().(reflect.Value))
+					}
+					fn.Call(args)
+				}
 			} else {
+				println("d.Type.Kind()", d.Type.Kind().String())
 				invokeMapFunc = func(input reflect.Value) {
 					fn.Call([]reflect.Value{input})
 				}

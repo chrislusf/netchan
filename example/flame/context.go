@@ -22,14 +22,15 @@ func NewContext() (fc *FlowContext) {
 func (fc *FlowContext) newNextDataset(shardSize int, t reflect.Type) (ret *Dataset) {
 	if t != nil {
 		ret = NewDataset(fc, t)
-		ret.EnsureShard(shardSize)
+		ret.SetupShard(shardSize)
 	}
 	return
 }
 
 // the tasks should run on the source dataset shard
 func (f *FlowContext) AddOneToOneStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToOne}
+	s = &Step{Output: output, Id: len(f.Steps), Type: OneToOne}
+	s.Inputs = append(s.Inputs, input)
 	// setup the network
 	for i, shard := range input.GetShards() {
 		t := &Task{Inputs: []*DatasetShard{shard}, Step: s, Id: i}
@@ -44,7 +45,8 @@ func (f *FlowContext) AddOneToOneStep(input *Dataset, output *Dataset) (s *Step)
 
 // the task should run on the destination dataset shard
 func (f *FlowContext) AddAllToOneStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: AllToOne}
+	s = &Step{Output: output, Id: len(f.Steps), Type: AllToOne}
+	s.Inputs = append(s.Inputs, input)
 	// setup the network
 	t := &Task{Step: s, Id: 0}
 	if output != nil {
@@ -61,7 +63,8 @@ func (f *FlowContext) AddAllToOneStep(input *Dataset, output *Dataset) (s *Step)
 // the task should run on the source dataset shard
 // input is nil for initial source dataset
 func (f *FlowContext) AddOneToAllStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToAll}
+	s = &Step{Output: output, Id: len(f.Steps), Type: OneToAll}
+	s.Inputs = append(s.Inputs, input)
 	// setup the network
 	t := &Task{Step: s, Id: 0}
 	if input != nil {
@@ -77,7 +80,8 @@ func (f *FlowContext) AddOneToAllStep(input *Dataset, output *Dataset) (s *Step)
 
 // the tasks should run on the source dataset shards
 func (f *FlowContext) AddAllToAllStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: AllToAll}
+	s = &Step{Output: output, Id: len(f.Steps), Type: AllToAll}
+	s.Inputs = append(s.Inputs, input)
 	// setup the network
 	for _, inShard := range input.GetShards() {
 		t := &Task{Inputs: []*DatasetShard{inShard}, Step: s, Id: 0}
@@ -91,7 +95,8 @@ func (f *FlowContext) AddAllToAllStep(input *Dataset, output *Dataset) (s *Step)
 }
 
 func (f *FlowContext) AddOneToEveryNStep(input *Dataset, n int, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToAll}
+	s = &Step{Output: output, Id: len(f.Steps), Type: OneToAll}
+	s.Inputs = append(s.Inputs, input)
 	// setup the network
 	m := len(input.GetShards())
 	for i, inShard := range input.GetShards() {
@@ -106,7 +111,8 @@ func (f *FlowContext) AddOneToEveryNStep(input *Dataset, n int, output *Dataset)
 }
 
 func (f *FlowContext) AddEveryNToOneStep(input *Dataset, m int, output *Dataset) (s *Step) {
-	s = &Step{Input: input, Output: output, Id: len(f.Steps), Type: OneToAll}
+	s = &Step{Output: output, Id: len(f.Steps), Type: OneToAll}
+	s.Inputs = append(s.Inputs, input)
 	// setup the network
 	n := len(output.GetShards())
 	for i, outShard := range output.GetShards() {
@@ -115,6 +121,29 @@ func (f *FlowContext) AddEveryNToOneStep(input *Dataset, m int, output *Dataset)
 			t.Inputs = append(t.Inputs, input.GetShards()[k*n+i])
 		}
 		s.Tasks = append(s.Tasks, t)
+	}
+	f.Steps = append(f.Steps, s)
+	return
+}
+
+// All dataset should have the same number of shards.
+func (f *FlowContext) MergeOneShardToOneShardStep(inputs []*Dataset, output *Dataset) (s *Step) {
+	s = &Step{Output: output, Id: len(f.Steps), Type: OneToOne}
+	for _, input := range inputs {
+		s.Inputs = append(s.Inputs, input)
+	}
+	// setup the network
+	if output != nil {
+		for shardId, outShard := range output.Shards {
+			t := &Task{Step: s, Id: shardId}
+			for _, input := range inputs {
+				t.Inputs = append(t.Inputs, input.GetShards()[shardId])
+			}
+			if output != nil {
+				t.Outputs = append(t.Outputs, outShard)
+			}
+			s.Tasks = append(s.Tasks, t)
+		}
 	}
 	f.Steps = append(f.Steps, s)
 	return

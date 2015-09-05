@@ -23,9 +23,11 @@ func NewKeyValue(key, value string) KeyValue {
 func main() {
 	flag.Parse()
 
-	test1()
+	//test1()
 
-	test2()
+	// test2()
+
+	test3()
 
 }
 
@@ -62,6 +64,25 @@ func test2() {
 		return false
 	}).Map(func(line string) {
 		println(line)
+	})
+
+}
+
+func test3() {
+	words := flame.NewContext().TextFile(
+		"/etc/passwd", 3,
+	).Filter(func(line string) bool {
+		return !strings.HasPrefix(line, "#")
+	}).Map(func(line string, ch chan string) {
+		for _, token := range strings.Split(line, ":") {
+			ch <- token
+		}
+	}).Map(func(line string) (string, string) {
+		return line, line
+	})
+
+	words.Join(words).Map(func(key, left, right string) {
+		println(key, ":", left, ":", right)
 	})
 
 }

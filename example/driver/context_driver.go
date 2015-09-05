@@ -43,9 +43,10 @@ func (fcd *FlowContextDriver) ShouldRun(fc *flame.FlowContext) bool {
 // driver runs on local, controlling all tasks
 func (fcd *FlowContextDriver) Run(fc *flame.FlowContext) {
 
-	var wg sync.WaitGroup
+	// find all possible resources
 
-	// start all tasks
+	// schedule to run the steps
+	var wg sync.WaitGroup
 	for stepId, step := range fc.Steps {
 		for taskId, task := range step.Tasks {
 			wg.Add(1)
@@ -60,7 +61,7 @@ func (fcd *FlowContextDriver) Run(fc *flame.FlowContext) {
 					"-task.task.id",
 					strconv.Itoa(taskId),
 				)
-				if err := RemoteExecute("localhost:8930", "a1", cmd); err != nil {
+				if err := RemoteExecute(fcd.option.Leader, "a1", cmd); err != nil {
 					println("exeuction error:", err.Error())
 				}
 			}(stepId, taskId, task)

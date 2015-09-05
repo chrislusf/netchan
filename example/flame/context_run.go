@@ -81,8 +81,10 @@ func (fc *FlowContext) run_standalone() {
 			go func(step *Step) {
 				defer wg.Done()
 				// println("start dataset", step.Id)
-				if step.Input != nil {
-					step.Input.RunSelf(step.Id)
+				for _, input := range step.Inputs {
+					if input != nil {
+						input.RunSelf(step.Id)
+					}
 				}
 			}(step)
 		}
