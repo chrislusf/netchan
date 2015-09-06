@@ -43,7 +43,6 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 	step := d.context.AddOneToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
-		defer outChan.Close()
 		var kvs []interface{}
 		for input := range task.InputChan() {
 			kvs = append(kvs, input.Interface())
@@ -52,7 +51,7 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 		if f == nil && len(kvs) > 0 {
 			dt := reflect.TypeOf(kvs[0])
 			if kv, isKeyValue := kvs[0].(KeyValue); isKeyValue {
-				dt = kv.Key.Type()
+				dt = reflect.TypeOf(kv.Key)
 			}
 			f = getLessThanComparator(dt)
 			lessThanFuncValue = reflect.ValueOf(f)
@@ -64,10 +63,10 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 
 		if d.Type.Kind() == reflect.Struct {
 			timsort.Sort(kvs, func(a interface{}, b interface{}) bool {
-				// println("a:", reflect.ValueOf(a).Field(0).Interface().(reflect.Value).Kind().String(), "lessThanFuncValue:", lessThanFuncValue.String())
+				// println("a:", reflect.ValueOf(a).Field(0).Kind().String(), "lessThanFuncValue:", lessThanFuncValue.String())
 				ret := lessThanFuncValue.Call([]reflect.Value{
-					reflect.ValueOf(a).Field(0).Interface().(reflect.Value),
-					reflect.ValueOf(b).Field(0).Interface().(reflect.Value),
+					reflect.ValueOf(reflect.ValueOf(a).Field(0).Interface()),
+					reflect.ValueOf(reflect.ValueOf(b).Field(0).Interface()),
 				})
 				return ret[0].Bool()
 			})
@@ -94,7 +93,6 @@ func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
 	step := d.context.AddAllToOneStep(d, ret)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
-		defer outChan.Close()
 		fn := reflect.ValueOf(f)
 		comparator := func(a, b reflect.Value) bool {
 			outs := fn.Call([]reflect.Value{

@@ -63,7 +63,6 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
-		defer outChan.Close()
 
 		leftChan := task.Inputs[0].ReadChan
 		rightChan := task.Inputs[1].ReadChan
@@ -139,15 +138,15 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 func getKeyValue(ch chan reflect.Value) (key, value reflect.Value, ok bool) {
 	keyValue, hasValue := <-ch
 	if hasValue {
-		key = keyValue.Field(0).Interface().(reflect.Value)
-		value = keyValue.Field(1).Interface().(reflect.Value)
+		key = reflect.ValueOf(keyValue.Field(0).Interface())
+		value = reflect.ValueOf(keyValue.Field(1).Interface())
 	}
 	return key, value, hasValue
 }
 
 func iterateByKey(ch chan reflect.Value, outChan chan KeyValues) {
-	var prevKey, key, value reflect.Value
-	var values []reflect.Value
+	var prevKey, key, value interface{}
+	var values []interface{}
 	isFirst := true
 	for kv := range ch {
 		key, value = kv.Field(0), kv.Field(1)

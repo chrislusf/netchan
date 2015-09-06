@@ -121,7 +121,7 @@ func connectTypedWriteChannelToRaw(writeChan reflect.Value, c chan []byte, wg *s
 				var buf bytes.Buffer
 				enc := gob.NewEncoder(&buf)
 				if err := enc.EncodeValue(t); err != nil {
-					log.Fatal("data type:", t.Kind(), " encode error:", err)
+					log.Fatal("data type:", t.Type().String(), t.Kind(), " encode error:", err)
 				}
 				c <- buf.Bytes()
 			}

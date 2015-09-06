@@ -52,9 +52,6 @@ func (d *Dataset) partition_scatter(shard int) (ret *Dataset) {
 			x := HashByKey(input, shard)
 			task.Outputs[x].WriteChan.Send(input)
 		}
-		for _, out := range task.Outputs {
-			out.WriteChan.Close()
-		}
 	}
 	return
 }
@@ -67,7 +64,6 @@ func (d *Dataset) partition_collect(shard int) (ret *Dataset) {
 		for input := range task.InputChan() {
 			task.Outputs[0].WriteChan.Send(input)
 		}
-		task.Outputs[0].WriteChan.Close()
 	}
 	return
 }

@@ -23,7 +23,7 @@ func NewKeyValue(key, value string) KeyValue {
 func main() {
 	flag.Parse()
 
-	//test1()
+	// test1()
 
 	// test2()
 
@@ -78,6 +78,7 @@ func test3() {
 			ch <- token
 		}
 	}).Map(func(line string) (string, string) {
+		println("map", line)
 		return line, line
 	})
 

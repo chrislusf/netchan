@@ -20,6 +20,9 @@ type Task struct {
 func (t *Task) Run() {
 	// println("run  step", t.Step.Id, "task", t.Id)
 	t.Step.Function(t)
+	for _, out := range t.Outputs {
+		out.WriteChan.Close()
+	}
 	// println("stop step", t.Step.Id, "task", t.Id)
 }
 

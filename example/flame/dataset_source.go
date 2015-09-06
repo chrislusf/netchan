@@ -39,10 +39,6 @@ func (fc *FlowContext) Source(f interface{}, shard int) (ret *Dataset) {
 					}
 				}
 			}
-
-			for _, out := range task.Outputs {
-				out.WriteChan.Close()
-			}
 		}()
 
 		wg.Wait()

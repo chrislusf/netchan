@@ -27,7 +27,6 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 
 		if ft.In(ft.NumIn()-1).Kind() == reflect.Chan {
 			outChan := task.Outputs[0].WriteChan
-			defer outChan.Close()
 			if d.Type.Kind() == reflect.Struct && ft.NumIn() != 2 {
 				invokeMapFunc = func(input reflect.Value) {
 					var args []reflect.Value
@@ -44,7 +43,6 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 			}
 		} else if ft.NumOut() == 1 {
 			outChan := task.Outputs[0].WriteChan
-			defer outChan.Close()
 			if d.Type.Kind() == reflect.Struct && ft.NumIn() != 1 {
 				invokeMapFunc = func(input reflect.Value) {
 					var args []reflect.Value
@@ -62,7 +60,6 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 			}
 		} else if ft.NumOut() == 2 {
 			outChan := task.Outputs[0].WriteChan
-			defer outChan.Close()
 			if d.Type.Kind() == reflect.Struct && ft.NumIn() != 1 {
 				invokeMapFunc = func(input reflect.Value) {
 					var args []reflect.Value
@@ -70,12 +67,12 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 						args = append(args, input.Field(i))
 					}
 					outs := fn.Call(args)
-					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0], Value: outs[1]}))
+					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0].Interface(), Value: outs[1].Interface()}))
 				}
 			} else {
 				invokeMapFunc = func(input reflect.Value) {
 					outs := fn.Call([]reflect.Value{input})
-					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0], Value: outs[1]}))
+					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0].Interface(), Value: outs[1].Interface()}))
 				}
 			}
 		} else {
@@ -96,7 +93,7 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 					fn.Call(args)
 				}
 			} else {
-				println("d.Type.Kind()", d.Type.Kind().String())
+				// println("d.Type.Kind()", d.Type.Kind().String())
 				invokeMapFunc = func(input reflect.Value) {
 					fn.Call([]reflect.Value{input})
 				}
@@ -120,7 +117,6 @@ func (d *Dataset) Filter(f interface{}) (ret *Dataset) {
 	step.Function = func(task *Task) {
 		fn := reflect.ValueOf(f)
 		outChan := task.Outputs[0].WriteChan
-		defer outChan.Close()
 		for input := range task.InputChan() {
 			outs := fn.Call([]reflect.Value{input})
 			if outs[0].Bool() {

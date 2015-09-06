@@ -5,13 +5,13 @@ import (
 )
 
 type KeyValues struct {
-	Key    reflect.Value
-	Values []reflect.Value
+	Key    interface{}
+	Values []interface{}
 }
 
 type KeyValue struct {
-	Key   reflect.Value
-	Value reflect.Value
+	Key   interface{}
+	Value interface{}
 }
 
 func guessFunctionOutputType(f interface{}) reflect.Type {
@@ -28,9 +28,19 @@ func guessFunctionOutputType(f interface{}) reflect.Type {
 	return nil
 }
 
+var KeyValueType reflect.Type
+
+func init() {
+	KeyValueType = reflect.TypeOf(KeyValue{})
+}
+
 func guessKey(input reflect.Value) reflect.Value {
 	switch input.Kind() {
 	case reflect.Struct:
+		if input.Type() == KeyValueType {
+			key := input.Field(0)
+			return reflect.ValueOf(key.Interface())
+		}
 		key := input.Field(0)
 		if v, ok := key.Interface().(reflect.Value); ok {
 			return v
