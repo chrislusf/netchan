@@ -42,9 +42,8 @@ func (d *Dataset) Sort(f interface{}) (ret *Dataset) {
 
 // f(V, V) bool : less than function
 // New Dataset contains K,V
-func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
-	ret = d.context.newNextDataset(len(d.Shards), d.Type)
-	step := d.context.AddOneToOneStep(d, ret)
+func (d *Dataset) LocalSort(f interface{}) *Dataset {
+	ret, step := add1ShardTo1Step(d, d.Type)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
 		var kvs []interface{}

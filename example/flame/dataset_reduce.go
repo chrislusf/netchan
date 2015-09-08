@@ -10,9 +10,8 @@ func (d *Dataset) Reduce(f interface{}) (ret *Dataset) {
 
 // f(V, V) V : less than function
 // New Dataset contains V
-func (d *Dataset) LocalReduce(f interface{}) (ret *Dataset) {
-	ret = d.context.newNextDataset(len(d.Shards), d.Type)
-	step := d.context.AddOneToOneStep(d, ret)
+func (d *Dataset) LocalReduce(f interface{}) *Dataset {
+	ret, step := add1ShardTo1Step(d, d.Type)
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan
 		isFirst := true
@@ -58,4 +57,51 @@ func (d *Dataset) MergeReduce(f interface{}) (ret *Dataset) {
 		outChan.Send(localResult)
 	}
 	return ret
+}
+
+func (d *Dataset) LocalReduceByKey(f interface{}) *Dataset {
+	ret, step := add1ShardTo1Step(d, d.Type)
+	step.Function = func(task *Task) {
+		outChan := task.Outputs[0].WriteChan
+		foldSameKey(task.InputChan(), f, outChan)
+	}
+	return ret
+}
+
+func aggregateSameKey(inputs chan reflect.Value, f interface{}, outChan reflect.Value) {
+	var sameKeyValues []interface{}
+	var prevKey reflect.Value
+	fn := reflect.ValueOf(f)
+	for input := range inputs {
+		if !reflect.DeepEqual(prevKey, input.Index(0)) {
+			outs := fn.Call([]reflect.Value{
+				prevKey,
+				reflect.ValueOf(sameKeyValues),
+			})
+			send(outChan, prevKey.Interface(), outs[0].Interface())
+			prevKey = input.Index(0)
+			sameKeyValues = nil
+		}
+		sameKeyValues = append(sameKeyValues, input.Index(1).Interface())
+	}
+}
+
+func foldSameKey(inputs chan reflect.Value, f interface{}, outChan reflect.Value) {
+	var prevKey reflect.Value
+	fn := reflect.ValueOf(f)
+	var localResult reflect.Value
+	for input := range inputs {
+		if !reflect.DeepEqual(prevKey, input.Index(0)) {
+			send(outChan, prevKey.Interface(), localResult.Interface())
+			prevKey = input.Index(0)
+			localResult = input
+		} else {
+			outs := fn.Call([]reflect.Value{
+				localResult,
+				input,
+			})
+			localResult = outs[0]
+		}
+	}
+	send(outChan, prevKey.Interface(), localResult.Interface())
 }

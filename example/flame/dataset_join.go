@@ -59,7 +59,7 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 	ret = this.context.newNextDataset(len(this.Shards), outType)
 
 	inputs := []*Dataset{this, that}
-	step := this.context.MergeOneShardToOneShardStep(inputs, ret)
+	step := this.context.MergeDatasets1ShardTo1Step(inputs, ret)
 
 	step.Function = func(task *Task) {
 		outChan := task.Outputs[0].WriteChan

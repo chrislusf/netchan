@@ -2,23 +2,13 @@ package main
 
 import (
 	"flag"
+	"log"
+	"regexp"
 	"strings"
 
 	_ "github.com/chrislusf/netchan/example/driver"
 	"github.com/chrislusf/netchan/example/flame"
 )
-
-type KeyValue struct {
-	Key   string
-	Value string
-}
-
-func NewKeyValue(key, value string) KeyValue {
-	return KeyValue{
-		Key:   key,
-		Value: value,
-	}
-}
 
 func main() {
 	flag.Parse()
@@ -78,11 +68,40 @@ func test3() {
 			ch <- token
 		}
 	}).Map(func(line string) (string, string) {
-		println("map", line)
 		return line, line
 	})
 
 	words.Join(words).Map(func(key, left, right string) {
+		println(key, ":", left, ":", right)
+	})
+
+}
+
+func test4() {
+	reg, err := regexp.Compile("[^A-Za-z0-9]+")
+	if err != nil {
+		log.Fatal(err)
+	}
+	tokenizer := func(line string, ch chan string) {
+		line = reg.ReplaceAllString(line, "-")
+		for _, token := range strings.Split(line, "-") {
+			ch <- strings.ToLower(token)
+		}
+	}
+	ctx := flame.NewContext()
+	leftWords := ctx.TextFile(
+		"/etc/passwd", 3,
+	).Map(tokenizer).Map(func(t string) (string, int) {
+		return t, 1
+	}).LocalSort(nil).LocalReduceByKey(func(x, y int) int {
+		return x + y
+	})
+
+	rightWords := ctx.TextFile(
+		"word_count.go", 3,
+	).Map(tokenizer).Sort(nil)
+
+	leftWords.Join(rightWords).Map(func(key, left, right string) {
 		println(key, ":", left, ":", right)
 	})
 

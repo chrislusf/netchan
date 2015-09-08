@@ -4,24 +4,12 @@ import (
 	"sync"
 )
 
-type StepType int
-
-const (
-	OneToOne StepType = iota
-	OneToEveryN
-	EveryNToOne
-	OneToAll
-	AllToOne
-	AllToAll
-)
-
 type Step struct {
 	Id       int
 	Inputs   []*Dataset
 	Output   *Dataset
 	Function func(*Task)
 	Tasks    []*Task
-	Type     StepType
 }
 
 func (s *Step) Run() {
