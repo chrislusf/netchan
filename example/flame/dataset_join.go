@@ -55,7 +55,7 @@ func (d *Dataset) Join(other *Dataset) *Dataset {
 func (this *Dataset) JoinHashedSorted(that *Dataset,
 	compareFunc interface{}, isLeftOuterJoin, isRightOuterJoin bool,
 ) (ret *Dataset) {
-	outType := reflect.TypeOf(([]interface{})(nil))
+	outType := reflect.TypeOf([]interface{}{})
 	ret = this.context.newNextDataset(len(this.Shards), outType)
 
 	inputs := []*Dataset{this, that}
@@ -72,18 +72,22 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 		leftKey, leftValue, leftHasValue := getKeyValue(leftChan)
 
 		if compareFunc == nil {
-			compareFunc = getComparator(leftKey.Type())
+			compareFunc = getComparator(reflect.TypeOf(leftKey))
 		}
 		fn := reflect.ValueOf(compareFunc)
-		comparator := func(a, b reflect.Value) int64 {
-			outs := fn.Call([]reflect.Value{a, b})
+		comparator := func(a, b interface{}) int64 {
+			outs := fn.Call([]reflect.Value{
+				reflect.ValueOf(a),
+				reflect.ValueOf(b),
+			})
 			return outs[0].Int()
 		}
 
 		for leftHasValue {
 			if !rightHasValue {
 				if isLeftOuterJoin {
-					outChan.Send(reflect.ValueOf([]interface{}{leftKey, leftValue, nil}))
+					// outChan.Send(reflect.ValueOf(NewTuple3(leftKey, leftValue, nil)))
+					send(outChan, leftKey, leftValue, nil)
 				}
 				leftKey, leftValue, leftHasValue = getKeyValue(leftChan)
 				continue
@@ -93,7 +97,7 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 			switch {
 			case x == 0:
 				// collect all values on rightChan
-				rightValues := []reflect.Value{rightValue}
+				rightValues := []interface{}{rightValue}
 				prevRightKey := rightKey
 				for {
 					rightKey, rightValue, rightHasValue = getKeyValue(rightChan)
@@ -103,7 +107,8 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 					} else {
 						// for current left key, join with all rightValues
 						for _, rv := range rightValues {
-							outChan.Send(reflect.ValueOf([]interface{}{leftKey, leftValue, rv}))
+							// outChan.Send(reflect.ValueOf(NewTuple3(leftKey, leftValue, rv)))
+							send(outChan, leftKey, leftValue, rv)
 						}
 						// reset right loop
 						rightValues = rightValues[0:0]
@@ -113,12 +118,14 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 				}
 			case x < 0:
 				if isLeftOuterJoin {
-					outChan.Send(reflect.ValueOf([]interface{}{leftKey, leftValue, nil}))
+					// outChan.Send(reflect.ValueOf(NewTuple3(leftKey, leftValue, nil)))
+					send(outChan, leftKey, leftValue, nil)
 				}
 				leftKey, leftValue, leftHasValue = getKeyValue(leftChan)
 			case x > 0:
 				if isRightOuterJoin {
-					outChan.Send(reflect.ValueOf([]interface{}{rightKey, nil, rightValue}))
+					// outChan.Send(reflect.ValueOf(NewTuple3(rightKey, nil, rightValue)))
+					send(outChan, rightKey, nil, rightValue)
 				}
 				rightKey, rightValue, rightHasValue = getKeyValue(rightChan)
 			}
@@ -127,7 +134,8 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 		if isRightOuterJoin {
 			for rightKeyValue := range rightChan {
 				rightKey, rightValue := rightKeyValue.Field(0), rightKeyValue.Field(1)
-				outChan.Send(reflect.ValueOf([]interface{}{rightKey, nil, rightValue}))
+				// outChan.Send(reflect.ValueOf(NewTuple3(rightKey, nil, rightValue)))
+				send(outChan, rightKey, nil, rightValue)
 			}
 		}
 
@@ -135,28 +143,15 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 	return ret
 }
 
-func getKeyValue(ch chan reflect.Value) (key, value reflect.Value, ok bool) {
+func getKeyValue(ch chan reflect.Value) (key, value interface{}, ok bool) {
 	keyValue, hasValue := <-ch
 	if hasValue {
-		key = reflect.ValueOf(keyValue.Field(0).Interface())
-		value = reflect.ValueOf(keyValue.Field(1).Interface())
+		key = keyValue.Index(0).Interface()
+		value = keyValue.Index(1).Interface()
 	}
 	return key, value, hasValue
 }
 
-func iterateByKey(ch chan reflect.Value, outChan chan KeyValues) {
-	var prevKey, key, value interface{}
-	var values []interface{}
-	isFirst := true
-	for kv := range ch {
-		key, value = kv.Field(0), kv.Field(1)
-		if !isFirst && !reflect.DeepEqual(prevKey, key) {
-			outChan <- KeyValues{Key: key, Values: values}
-			prevKey = key
-			values = values[0:0]
-		} else {
-			values = append(values, value)
-		}
-	}
-	outChan <- KeyValues{Key: key, Values: values}
+func send(outChan reflect.Value, values ...interface{}) {
+	outChan.Send(reflect.ValueOf(values))
 }

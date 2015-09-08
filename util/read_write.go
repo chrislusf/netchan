@@ -2,6 +2,7 @@ package util
 
 import (
 	"io"
+	"log"
 )
 
 // on wire io reader writer actual transmitted: size(4), bytes(n), flag(1),
@@ -41,13 +42,13 @@ func ReadBytes(r io.Reader, lenBuf []byte) (flag ControlFlag, m *Message, err er
 	_, err = io.ReadAtLeast(r, lenBuf, 4)
 	if err == io.EOF {
 		flag = CloseChannel
-		return flag, NewMessage(CloseChannel, []byte("reader is closed")), err
+		return flag, NewMessage(CloseChannel, nil), err
 	}
 	size := BytesToUint32(lenBuf)
 	data := make([]byte, int(size))
 	_, err = io.ReadAtLeast(r, data, int(size))
 	if err != nil {
-		return CloseChannel, NewMessage(CloseChannel, []byte("reader is closed")), err
+		return CloseChannel, NewMessage(CloseChannel, nil), err
 	}
 	message := LoadMessage(data)
 	// println("read size:", size, string(message.Data()), ".")
@@ -79,4 +80,20 @@ func WriteData(w io.Writer, lenBuf []byte, dataList ...[]byte) error {
 
 	// FIXME: get and return proper error here
 	return nil
+}
+
+func WriteUint64(w io.Writer, number uint64) {
+	buf := make([]byte, 8)
+	Uint64toBytes(buf, number)
+	w.Write(buf)
+}
+
+func ReadUint64(r io.Reader) uint64 {
+	buf := make([]byte, 8)
+	_, err := io.ReadAtLeast(r, buf, 8)
+	if err == io.EOF {
+		log.Printf("Failed to read uint64: %v", err)
+		return 0
+	}
+	return BytesToUint64(buf)
 }

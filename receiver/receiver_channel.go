@@ -3,6 +3,7 @@ package receiver
 import (
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"time"
 
@@ -10,36 +11,53 @@ import (
 	"github.com/chrislusf/netchan/util"
 )
 
-// keep alive by sending heartbeat every 2 seconds
-func NewChannel(name string, leader string) (chan []byte, error) {
-	l := client.NewNameServiceAgent(leader)
-
-	ch := make(chan []byte)
-	go func() {
-		for {
-			var target string
-			for {
-				locations := l.Find(name)
-				if len(locations) > 0 {
-					target = locations[0]
-				}
-				if target != "" {
-					break
-				} else {
-					time.Sleep(time.Second)
-					// print("z")
-				}
-			}
-			// println("checking target", target)
-
-			receiveTopicFrom(name, target, ch)
-		}
-	}()
-
-	return ch, nil
+type ReceiveChannel struct {
+	Ch     chan []byte
+	offset uint64
+	name   string
+	Leader string
 }
 
-func receiveTopicFrom(topicName, target string, ch chan []byte) {
+func (rc *ReceiveChannel) findTarget() (target string) {
+	l := client.NewNameServiceAgent(rc.Leader)
+	for {
+		locations := l.Find(rc.name)
+		if len(locations) > 0 {
+			target = locations[rand.Intn(len(locations))]
+		}
+		if target != "" {
+			break
+		} else {
+			time.Sleep(time.Second)
+			// print("z")
+		}
+	}
+	return
+}
+
+func NewReceiveChannel(name string, leader string, offset uint64) *ReceiveChannel {
+	return &ReceiveChannel{
+		Leader: leader,
+		name:   name,
+		offset: offset,
+	}
+}
+
+// Not thread safe
+func (rc *ReceiveChannel) GetChannel() (chan []byte, error) {
+	if rc.Ch != nil {
+		return rc.Ch, nil
+	}
+	rc.Ch = make(chan []byte)
+	go func() {
+		target := rc.findTarget()
+		rc.receiveTopicFrom(target)
+	}()
+
+	return rc.Ch, nil
+}
+
+func (rc *ReceiveChannel) receiveTopicFrom(target string) {
 	// connect to a TCP server
 	network := "tcp"
 	raddr, err := net.ResolveTCPAddr(network, target)
@@ -59,7 +77,9 @@ func receiveTopicFrom(topicName, target string, ch chan []byte) {
 
 	buf := make([]byte, 4)
 
-	util.WriteBytes(conn, buf, util.NewMessage(util.Data, []byte("GET "+topicName)))
+	util.WriteBytes(conn, buf, util.NewMessage(util.Data, []byte("GET "+rc.name)))
+
+	util.WriteUint64(conn, rc.offset)
 
 	util.WriteBytes(conn, buf, util.NewMessage(util.Data, []byte("ok")))
 
@@ -75,10 +95,6 @@ func receiveTopicFrom(topicName, target string, ch chan []byte) {
 
 	for {
 		f, data, err := util.ReadBytes(conn, buf)
-		if f != util.Data {
-			// print("recieve close chan1: ", string([]byte{byte(f)}))
-			break
-		}
 		if err == io.EOF {
 			// print("recieve close chan2: eof")
 			break
@@ -87,8 +103,14 @@ func receiveTopicFrom(topicName, target string, ch chan []byte) {
 			log.Printf("receive error:%v", err)
 			continue
 		}
+		rc.offset += 4 + 1
+		if f != util.Data {
+			// print("recieve close chan1: ", string([]byte{byte(f)}))
+			break
+		}
 		// println("receive raw data :", string(data.Bytes()))
-		ch <- data.Data()
+		rc.offset += uint64(len(data.Data()))
+		rc.Ch <- data.Data()
 	}
-	close(ch)
+	close(rc.Ch)
 }

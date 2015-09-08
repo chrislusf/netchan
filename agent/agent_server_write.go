@@ -1,47 +1,47 @@
 package agent
 
 import (
+	"fmt"
 	"io"
 	"log"
-	"strconv"
 
-	"github.com/chrislusf/netchan/queue"
+	"github.com/chrislusf/netchan/agent/store"
 	"github.com/chrislusf/netchan/service_discovery/client"
 	"github.com/chrislusf/netchan/util"
 )
 
 func (as *AgentServer) handleWriteConnection(r io.Reader, name string) {
-	as.name2QueueLock.Lock()
-	ds, ok := as.name2Queue[name]
+	as.name2StoreLock.Lock()
+	ds, ok := as.name2Store[name]
 	if !ok {
-		q, err := queue.NewDiskBackedQueue(as.dir, name+strconv.Itoa(as.Port), as.inMemoryItemLimit)
+		s, err := store.NewLocalFileDataStore(as.dir, fmt.Sprintf("%s-%d", name, as.Port))
 		if err != nil {
 			log.Printf("Failed to create a queue on disk: %v", err)
-			as.name2QueueLock.Unlock()
+			as.name2StoreLock.Unlock()
 			return
 		}
-		as.name2Queue[name] = NewDataStore(q)
-		ds = as.name2Queue[name]
+		as.name2Store[name] = NewLiveDataStore(s)
+		ds = as.name2Store[name]
 
 		//register stream
 		go client.NewHeartBeater(name, as.Port, "localhost:8930").StartHeartBeat(ds.killHeartBeater)
 	}
-	as.name2QueueLock.Unlock()
+	as.name2StoreLock.Unlock()
 
-	counter := 0
 	buf := make([]byte, 4)
-	// write chan is not closed, for writes from another request
 	for {
-		// f is already included in message
 		_, message, err := util.ReadBytes(r, buf)
 		if err == io.EOF {
 			// println("agent recv eof:", string(message.Bytes()))
 			break
 		}
 		if err == nil {
-			counter++
-			ds.Queue.WriteChan <- message.Bytes()
+			util.WriteBytes(ds.store, buf, message)
 			// println("agent recv:", string(message.Bytes()))
+		}
+		if message.Flag() != util.Data {
+			// println("finished writing", name)
+			break
 		}
 	}
 }

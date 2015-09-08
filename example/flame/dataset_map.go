@@ -67,12 +67,14 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 						args = append(args, input.Field(i))
 					}
 					outs := fn.Call(args)
-					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0].Interface(), Value: outs[1].Interface()}))
+					// outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0].Interface(), Value: outs[1].Interface()}))
+					sendValues(outChan, outs)
 				}
 			} else {
 				invokeMapFunc = func(input reflect.Value) {
 					outs := fn.Call([]reflect.Value{input})
-					outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0].Interface(), Value: outs[1].Interface()}))
+					// outChan.Send(reflect.ValueOf(KeyValue{Key: outs[0].Interface(), Value: outs[1].Interface()}))
+					sendValues(outChan, outs)
 				}
 			}
 		} else {
@@ -88,7 +90,7 @@ func (d *Dataset) Map(f interface{}) (ret *Dataset) {
 				invokeMapFunc = func(input reflect.Value) {
 					var args []reflect.Value
 					for i := 0; i < input.Len(); i++ {
-						args = append(args, input.Index(i).Interface().(reflect.Value))
+						args = append(args, reflect.ValueOf(input.Index(i).Interface()))
 					}
 					fn.Call(args)
 				}
@@ -125,4 +127,12 @@ func (d *Dataset) Filter(f interface{}) (ret *Dataset) {
 		}
 	}
 	return
+}
+
+func sendValues(outChan reflect.Value, values []reflect.Value) {
+	var infs []interface{}
+	for _, v := range values {
+		infs = append(infs, v.Interface())
+	}
+	outChan.Send(reflect.ValueOf(infs))
 }

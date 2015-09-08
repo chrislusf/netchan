@@ -35,7 +35,7 @@ func NewChannel(name string, port int, wg *sync.WaitGroup) (chan []byte, error) 
 		for data := range ch {
 			util.WriteBytes(conn, buf, util.NewMessage(util.Data, data))
 		}
-		util.WriteBytes(conn, buf, util.NewMessage(util.CloseChannel, []byte("Done")))
+		util.WriteBytes(conn, buf, util.NewMessage(util.CloseChannel, nil))
 	}()
 
 	return ch, nil

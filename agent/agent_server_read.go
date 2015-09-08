@@ -1,58 +1,44 @@
 package agent
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"net"
-	"strconv"
 	"time"
 
-	"github.com/chrislusf/netchan/queue"
+	"github.com/chrislusf/netchan/agent/store"
 	"github.com/chrislusf/netchan/util"
 )
 
-func (as *AgentServer) handleLocalReadConnection(conn net.Conn, name string) {
-	as.name2QueueLock.Lock()
-	ds, ok := as.name2Queue[name]
+func (as *AgentServer) handleLocalReadConnection(conn net.Conn, name string, offset int64) {
+	as.name2StoreLock.Lock()
+	ds, ok := as.name2Store[name]
 	if !ok {
-		q, err := queue.NewDiskBackedQueue(as.dir, name+strconv.Itoa(as.Port), as.inMemoryItemLimit)
+		s, err := store.NewLocalFileDataStore(as.dir, fmt.Sprintf("%s-%d", name, as.Port))
 		if err != nil {
 			// log.Printf("Failed to create queue on disk: %v", err)
-			as.name2QueueLock.Unlock()
+			as.name2StoreLock.Unlock()
 			return
 		}
-		as.name2Queue[name] = NewDataStore(q)
-		ds = as.name2Queue[name]
+		as.name2Store[name] = NewLiveDataStore(s)
+		ds = as.name2Store[name]
 	}
-	as.name2QueueLock.Unlock()
+	as.name2StoreLock.Unlock()
 
 	closeSignal := make(chan bool, 1)
 
-	q := ds.Queue
-
 	go func() {
 		buf := make([]byte, 4)
-		for {
+		for false {
 			// println("wait for reader heartbeat")
 			conn.SetReadDeadline(time.Now().Add(2500 * time.Millisecond))
-			f, _, err := util.ReadBytes(conn, buf)
+			_, _, err := util.ReadBytes(conn, buf)
 			if err != nil {
-				// fmt.Printf("connection is closed? (%v)\n", err)
+				fmt.Printf("connection is closed? (%v)\n", err)
 				closeSignal <- true
 				close(closeSignal)
 				return
-			}
-			if f != util.Data {
-				closeSignal <- true
-				close(closeSignal)
-				return
-			}
-			// println("get", name, "heartbeat:", string(m.Bytes()))
-			if len(q.Head) == 0 {
-				q.Mutex.Lock()
-				q.FillHead()
-				q.Mutex.Unlock()
-			} else {
-				println(name, "head has", len(q.Head))
 			}
 		}
 	}()
@@ -60,42 +46,41 @@ func (as *AgentServer) handleLocalReadConnection(conn net.Conn, name string) {
 	buf := make([]byte, 4)
 
 	// loop for every read
-	done := false
-	for !done {
-		if len(q.Head) == 0 {
-			q.Mutex.Lock()
-			q.FillHead()
-			q.Mutex.Unlock()
+	for {
+		_, err := ds.store.ReadAt(buf, offset)
+		if err != nil {
+			// connection is closed
+			if err != io.EOF {
+				log.Printf("Read size from %s offset %d: %v", name, offset, err)
+			}
+			// println("got problem reading", name, offset, err.Error())
+			return
 		}
 
-		// println("tail:", q.Tail.Len(), "head:", len(q.Head))
+		offset += 4
+		size := util.BytesToUint32(buf)
 
-		select {
-		case messageBytes, ok := <-q.Head:
-			if !ok {
-				println(name, "read q head is already closed?")
-				done = true
-				break
+		// println("reading", name, offset, "size:", size)
+
+		messageBytes := make([]byte, size)
+		_, err = ds.store.ReadAt(messageBytes, offset)
+		if err != nil {
+			// connection is closed
+			if err != io.EOF {
+				log.Printf("Read data from %s offset %d: %v", name, offset, err)
 			}
-			if len(messageBytes) == 0 {
-				// FIXME: how could it be possible? don't know yet
-				log.Printf("%s Somehow this happens?", name)
-				break
-			}
-			m := util.LoadMessage(messageBytes)
-			// println(name, "send:", len(messageBytes), ":", string(m.Data()))
-			util.WriteBytes(conn, buf, m)
-		case <-closeSignal:
-			// println("agent: client read connection closed")
-			done = true
+			return
+		}
+		offset += int64(size)
+
+		m := util.LoadMessage(messageBytes)
+		// println(name, "sent:", len(messageBytes), ":", string(m.Data()))
+		util.WriteBytes(conn, buf, m)
+
+		if m.Flag() != util.Data {
+			// println("Finished reading", name)
+			break
 		}
 	}
 
-	as.name2QueueLock.Lock()
-	if q.IsEmpty() {
-		ds.Destroy()
-		delete(as.name2Queue, name)
-	}
-	as.name2QueueLock.Unlock()
-	// println("read connection is completed")
 }

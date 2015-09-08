@@ -18,7 +18,11 @@ func DefaultFloat64LessThanComparator(a, b float64) bool {
 	return a < b
 }
 
-func getLessThanComparator(dt reflect.Type) (funcPointer interface{}) {
+func getLessThanComparator(key reflect.Value) (funcPointer interface{}) {
+	dt := key.Type()
+	if key.Kind() == reflect.Interface {
+		dt = reflect.TypeOf(key.Interface())
+	}
 	switch dt.Kind() {
 	case reflect.Int:
 		funcPointer = DefaultInt64LessThanComparator
@@ -27,7 +31,7 @@ func getLessThanComparator(dt reflect.Type) (funcPointer interface{}) {
 	case reflect.String:
 		funcPointer = DefaultStringLessThanComparator
 	default:
-		log.Panicf("No default less than comparator for %s:%s", dt.String(), dt.Kind().String())
+		log.Panicf("No default less than comparator for type:%s, kind:%s", dt.String(), dt.Kind().String())
 	}
 	return
 }
@@ -49,11 +53,8 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 		}
 		lessThanFuncValue := reflect.ValueOf(f)
 		if f == nil && len(kvs) > 0 {
-			dt := reflect.TypeOf(kvs[0])
-			if kv, isKeyValue := kvs[0].(KeyValue); isKeyValue {
-				dt = reflect.TypeOf(kv.Key)
-			}
-			f = getLessThanComparator(dt)
+			v := guessKey(reflect.ValueOf(kvs[0]))
+			f = getLessThanComparator(v)
 			lessThanFuncValue = reflect.ValueOf(f)
 		}
 		// println("set lessThanFuncValue", lessThanFuncValue.String(), "len(kvs)", len(kvs))
@@ -61,12 +62,12 @@ func (d *Dataset) LocalSort(f interface{}) (ret *Dataset) {
 		// if this is stuck, usually means upstream some chan is not closed
 		// since the source waits for all inputs
 
-		if d.Type.Kind() == reflect.Struct {
+		if d.Type.Kind() == reflect.Slice {
 			timsort.Sort(kvs, func(a interface{}, b interface{}) bool {
 				// println("a:", reflect.ValueOf(a).Field(0).Kind().String(), "lessThanFuncValue:", lessThanFuncValue.String())
 				ret := lessThanFuncValue.Call([]reflect.Value{
-					reflect.ValueOf(reflect.ValueOf(a).Field(0).Interface()),
-					reflect.ValueOf(reflect.ValueOf(b).Field(0).Interface()),
+					reflect.ValueOf(reflect.ValueOf(a).Index(0).Interface()),
+					reflect.ValueOf(reflect.ValueOf(b).Index(0).Interface()),
 				})
 				return ret[0].Bool()
 			})

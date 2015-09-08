@@ -27,5 +27,6 @@ func GetSendChannel(name string, wg *sync.WaitGroup) (chan []byte, error) {
 }
 
 func GetReadChannel(name string) (chan []byte, error) {
-	return receiver.NewChannel(name, networkContext.LeaderAddress)
+	rc := receiver.NewReceiveChannel(name, networkContext.LeaderAddress, 0)
+	return rc.GetChannel()
 }

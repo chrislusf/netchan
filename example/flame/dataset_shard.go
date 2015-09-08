@@ -30,8 +30,13 @@ func (d *Dataset) Partition(shard int) *Dataset {
 func HashByKey(input reflect.Value, shard int) int {
 	v := guessKey(input)
 
+	dt := v.Type()
+	if dt.Kind() == reflect.Interface {
+		dt = reflect.TypeOf(v.Interface())
+	}
+
 	var x int
-	switch v.Kind() {
+	switch dt.Kind() {
 	case reflect.Int:
 		x = int(v.Int()) % shard
 	case reflect.String:
@@ -39,7 +44,7 @@ func HashByKey(input reflect.Value, shard int) int {
 	case reflect.Slice:
 		x = int(lib.Hash(v.Bytes())) % shard
 	default:
-		println("unexpected key to hash:", v.Kind())
+		println("unexpected key to hash:", v.Kind().String())
 	}
 	return x
 }

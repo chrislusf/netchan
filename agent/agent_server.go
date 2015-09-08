@@ -9,37 +9,37 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/chrislusf/netchan/agent/store"
 	"github.com/chrislusf/netchan/example/driver/cmd"
-	"github.com/chrislusf/netchan/queue"
 	"github.com/chrislusf/netchan/service_discovery/client"
 	"github.com/chrislusf/netchan/util"
 	"github.com/golang/protobuf/proto"
 )
 
-type DataStore struct {
-	Queue           *queue.DiskBackedQueue
+type LiveDataStore struct {
+	store           store.DataStore
 	killHeartBeater chan bool
 }
 
-func NewDataStore(q *queue.DiskBackedQueue) *DataStore {
-	return &DataStore{
-		Queue:           q,
+func NewLiveDataStore(s store.DataStore) *LiveDataStore {
+	return &LiveDataStore{
+		store:           s,
 		killHeartBeater: make(chan bool, 1),
 	}
 }
 
-func (ds *DataStore) Destroy() {
+func (ds *LiveDataStore) Destroy() {
 	ds.killHeartBeater <- true
-	ds.Queue.Destroy()
+	ds.store.Destroy()
 }
 
 type AgentServer struct {
 	leader            string
 	Port              int
-	name2Queue        map[string]*DataStore
+	name2Store        map[string]*LiveDataStore
 	dir               string
 	inMemoryItemLimit int
-	name2QueueLock    sync.Mutex
+	name2StoreLock    sync.Mutex
 	wg                sync.WaitGroup
 
 	l net.Listener
@@ -51,7 +51,7 @@ func NewAgentServer(dir string, port int, leader string) *AgentServer {
 		Port:              port,
 		dir:               dir,
 		inMemoryItemLimit: 3,
-		name2Queue:        make(map[string]*DataStore),
+		name2Store:        make(map[string]*LiveDataStore),
 	}
 
 	err := as.Init()
@@ -123,7 +123,8 @@ func (r *AgentServer) handleRequest(conn net.Conn) {
 		r.handleWriteConnection(conn, name)
 	} else if bytes.HasPrefix(message.Data(), []byte("GET ")) {
 		name := string(message.Data()[4:])
-		r.handleLocalReadConnection(conn, name)
+		offset := util.ReadUint64(conn)
+		r.handleLocalReadConnection(conn, name, int64(offset))
 	} else if bytes.HasPrefix(message.Data(), []byte("CMD ")) {
 		newCmd := &cmd.ControlMessage{}
 		err := proto.Unmarshal(message.Data()[4:], newCmd)

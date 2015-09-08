@@ -61,7 +61,7 @@ func (tr *TaskRunner) Run(fc *flame.FlowContext, step *flame.Step, task *flame.T
 func (tr *TaskRunner) connectInputs(wg *sync.WaitGroup) {
 	for _, shard := range tr.Task.Inputs {
 		d := shard.Parent
-		readChanName := fmt.Sprintf("ct-%d-ds-%d-shard-%d-", tr.option.ContextId, d.Id, shard.Id)
+		readChanName := fmt.Sprintf("ct-%d-ds-%d-shard-%d", tr.option.ContextId, d.Id, shard.Id)
 		// println("trying to read from:", readChanName)
 		rawChan, err := GetReadChannel(readChanName)
 		if err != nil {
@@ -75,7 +75,7 @@ func (tr *TaskRunner) connectOutputs(wg *sync.WaitGroup) {
 	for _, shard := range tr.Task.Outputs {
 		d := shard.Parent
 
-		writeChanName := fmt.Sprintf("ct-%d-ds-%d-shard-%d-", tr.option.ContextId, d.Id, shard.Id)
+		writeChanName := fmt.Sprintf("ct-%d-ds-%d-shard-%d", tr.option.ContextId, d.Id, shard.Id)
 		// println("writing to:", writeChanName)
 		rawChan, err := GetSendChannel(writeChanName, wg)
 		if err != nil {
@@ -97,7 +97,7 @@ func rawReadChannelToTyped(c chan []byte, t reflect.Type, wg *sync.WaitGroup) ch
 			dec := gob.NewDecoder(bytes.NewBuffer(data))
 			v := reflect.New(t)
 			if err := dec.DecodeValue(v); err != nil {
-				log.Fatal("data type:", v.Kind(), "decode error:", err)
+				log.Fatal("data type:", v.Kind(), " decode error:", err)
 			} else {
 				out <- reflect.Indirect(v)
 			}
@@ -121,7 +121,7 @@ func connectTypedWriteChannelToRaw(writeChan reflect.Value, c chan []byte, wg *s
 				var buf bytes.Buffer
 				enc := gob.NewEncoder(&buf)
 				if err := enc.EncodeValue(t); err != nil {
-					log.Fatal("data type:", t.Type().String(), t.Kind(), " encode error:", err)
+					log.Fatal("data type:", t.Type().String(), " ", t.Kind(), " encode error:", err)
 				}
 				c <- buf.Bytes()
 			}
