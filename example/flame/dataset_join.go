@@ -131,8 +131,8 @@ func (this *Dataset) JoinHashedSorted(that *Dataset,
 			}
 		}
 		// handle right outer join tail case
-		if isRightOuterJoin {
-			for rightKeyValue := range rightChan {
+		for rightKeyValue := range rightChan {
+			if isRightOuterJoin {
 				rightKey, rightValue := rightKeyValue.Field(0), rightKeyValue.Field(1)
 				// outChan.Send(reflect.ValueOf(NewTuple3(rightKey, nil, rightValue)))
 				send(outChan, rightKey, nil, rightValue)

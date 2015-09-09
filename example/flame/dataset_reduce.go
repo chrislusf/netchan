@@ -87,21 +87,23 @@ func aggregateSameKey(inputs chan reflect.Value, f interface{}, outChan reflect.
 }
 
 func foldSameKey(inputs chan reflect.Value, f interface{}, outChan reflect.Value) {
-	var prevKey reflect.Value
+	var prevKey interface{}
 	fn := reflect.ValueOf(f)
 	var localResult reflect.Value
 	for input := range inputs {
-		if !reflect.DeepEqual(prevKey, input.Index(0)) {
-			send(outChan, prevKey.Interface(), localResult.Interface())
-			prevKey = input.Index(0)
-			localResult = input
+		if !reflect.DeepEqual(prevKey, input.Index(0).Interface()) {
+			if localResult.IsValid() {
+				send(outChan, prevKey, localResult.Interface())
+			}
+			prevKey = input.Index(0).Interface()
+			localResult = reflect.ValueOf(input.Index(1).Interface())
 		} else {
 			outs := fn.Call([]reflect.Value{
 				localResult,
-				input,
+				reflect.ValueOf(input.Index(1).Interface()),
 			})
 			localResult = outs[0]
 		}
 	}
-	send(outChan, prevKey.Interface(), localResult.Interface())
+	send(outChan, prevKey, localResult.Interface())
 }

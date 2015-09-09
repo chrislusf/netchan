@@ -58,7 +58,13 @@ func (d *Dataset) Map(f interface{}) *Dataset {
 				invokeMapFunc = func(input reflect.Value) {
 					var args []reflect.Value
 					for i := 0; i < input.Len(); i++ {
-						args = append(args, reflect.ValueOf(input.Index(i).Interface()))
+						p := reflect.ValueOf(input.Index(i).Interface())
+						if p.Kind() == reflect.Slice {
+							// dealing with joining k, [k,v], [k,v]
+							p = p.Index(1)
+						}
+						// println("args", i, "kind", p.Kind().String(), p.Type().String(), ":", reflect.ValueOf(p.Interface()).String())
+						args = append(args, reflect.ValueOf(p.Interface()))
 					}
 					outs := fn.Call(args)
 					sendValues(outChan, outs)
@@ -74,6 +80,7 @@ func (d *Dataset) Map(f interface{}) *Dataset {
 		for input := range task.InputChan() {
 			invokeMapFunc(input)
 		}
+		// println("exiting d:", d.Id, "step:", step.Id, "task:", task.Id)
 	}
 	if ret == nil {
 		d.context.Run()
@@ -103,12 +110,22 @@ func add1ShardTo1Step(d *Dataset, nextDataType reflect.Type) (ret *Dataset, step
 	return
 }
 
+// the value over the outChan is always reflect.Value
+// but the inner values are always actual interface{} object
 func sendValues(outChan reflect.Value, values []reflect.Value) {
 	var infs []interface{}
 	for _, v := range values {
 		infs = append(infs, v.Interface())
 	}
-	if len(infs) > 0 && !outChan.IsNil() {
+	if !outChan.IsValid() {
+		return
+	}
+	if len(infs) > 1 {
 		outChan.Send(reflect.ValueOf(infs))
+		return
+	}
+	if len(infs) == 1 {
+		outChan.Send(reflect.ValueOf(infs[0]))
+		return
 	}
 }

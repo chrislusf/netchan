@@ -17,7 +17,9 @@ func main() {
 
 	// test2()
 
-	test3()
+	// test3()
+
+	test4()
 
 }
 
@@ -93,15 +95,19 @@ func test4() {
 		"/etc/passwd", 3,
 	).Map(tokenizer).Map(func(t string) (string, int) {
 		return t, 1
-	}).LocalSort(nil).LocalReduceByKey(func(x, y int) int {
+	}).Sort(nil).LocalReduceByKey(func(x, y int) int {
 		return x + y
 	})
 
 	rightWords := ctx.TextFile(
 		"word_count.go", 3,
-	).Map(tokenizer).Sort(nil)
+	).Map(tokenizer).Map(func(t string) (string, int) {
+		return t, 1
+	}).Sort(nil).LocalReduceByKey(func(x, y int) int {
+		return x + y
+	})
 
-	leftWords.Join(rightWords).Map(func(key, left, right string) {
+	leftWords.Join(rightWords).Map(func(key string, left, right int) {
 		println(key, ":", left, ":", right)
 	})
 

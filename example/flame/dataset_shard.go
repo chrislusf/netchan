@@ -24,6 +24,9 @@ func (d *Dataset) SetupShard(n int) {
 // 1. Each record is sharded to a local shard
 // 2. The destination shard will collect its child shards and merge into one
 func (d *Dataset) Partition(shard int) *Dataset {
+	if shard == 1 {
+		return d
+	}
 	return d.partition_scatter(shard).partition_collect(shard)
 }
 

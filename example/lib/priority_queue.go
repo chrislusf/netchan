@@ -3,12 +3,11 @@ package lib
 
 import (
 	"container/heap"
-	"reflect"
 )
 
 // An Item is something we manage in a priority queue.
 type Item struct {
-	value reflect.Value // The value of the item; arbitrary.
+	value interface{} // The value of the item; arbitrary.
 	// The index is needed by update and is maintained by the heap.Interface methods.
 	index    int // The index of the item in the heap.
 	sourceId int // payload containing the value's source id
@@ -17,10 +16,10 @@ type Item struct {
 // A PriorityQueue implements heap.Interface and holds Items.
 type PriorityQueue struct {
 	items    []*Item
-	lessFunc func(a, b reflect.Value) bool
+	lessFunc func(a, b interface{}) bool
 }
 
-func NewPriorityQueue(lessFunc func(a, b reflect.Value) bool) *PriorityQueue {
+func NewPriorityQueue(lessFunc func(a, b interface{}) bool) *PriorityQueue {
 	pq := &PriorityQueue{}
 	pq.items = make([]*Item, 0)
 	pq.lessFunc = lessFunc
@@ -28,11 +27,11 @@ func NewPriorityQueue(lessFunc func(a, b reflect.Value) bool) *PriorityQueue {
 	return pq
 }
 
-func (pq *PriorityQueue) Enqueue(x reflect.Value, sourceId int) {
+func (pq *PriorityQueue) Enqueue(x interface{}, sourceId int) {
 	heap.Push(pq, &Item{value: x, sourceId: sourceId})
 }
 
-func (pq *PriorityQueue) Dequeue() (reflect.Value, int) {
+func (pq *PriorityQueue) Dequeue() (interface{}, int) {
 	item := heap.Pop(pq).(*Item)
 	return item.value, item.sourceId
 }

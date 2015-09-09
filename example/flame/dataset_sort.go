@@ -8,6 +8,65 @@ import (
 	"github.com/psilva261/timsort"
 )
 
+func (d *Dataset) Sort(f interface{}) (ret *Dataset) {
+	return d.LocalSort(f).MergeSorted(f)
+}
+
+// f(V, V) bool : less than function
+// New Dataset contains K,V
+func (d *Dataset) LocalSort(f interface{}) *Dataset {
+	ret, step := add1ShardTo1Step(d, d.Type)
+	step.Function = func(task *Task) {
+		outChan := task.Outputs[0].WriteChan
+		var kvs []interface{}
+		for input := range task.InputChan() {
+			kvs = append(kvs, input.Interface())
+		}
+		if len(kvs) == 0 {
+			return
+		}
+		v := guessKey(reflect.ValueOf(kvs[0]))
+		comparator := getLessThanComparator(d.Type, v, f)
+		timsort.Sort(kvs, comparator)
+
+		for _, kv := range kvs {
+			outChan.Send(reflect.ValueOf(kv))
+		}
+	}
+	return ret
+}
+
+func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
+	ret = d.context.newNextDataset(1, d.Type)
+	step := d.context.AddAllToOneStep(d, ret)
+	step.Function = func(task *Task) {
+		outChan := task.Outputs[0].WriteChan
+
+		var pq *lib.PriorityQueue
+		// enqueue one item to the pq from each shard
+		isFirst := true
+		for shardId, shard := range task.Inputs {
+			if x, ok := <-shard.ReadChan; ok {
+				if isFirst {
+					isFirst = false
+					v := guessKey(x)
+					comparator := getLessThanComparator(d.Type, v, f)
+					pq = lib.NewPriorityQueue(comparator)
+				}
+				pq.Enqueue(x.Interface(), shardId)
+			}
+		}
+		for pq.Len() > 0 {
+			t, shardId := pq.Dequeue()
+			outChan.Send(reflect.ValueOf(t))
+			if x, ok := <-task.Inputs[shardId].ReadChan; ok {
+				pq.Enqueue(x.Interface(), shardId)
+			}
+		}
+	}
+	return ret
+}
+
 func DefaultStringLessThanComparator(a, b string) bool {
 	return a < b
 }
@@ -18,7 +77,7 @@ func DefaultFloat64LessThanComparator(a, b float64) bool {
 	return a < b
 }
 
-func getLessThanComparator(key reflect.Value) (funcPointer interface{}) {
+func _getLessThanComparatorByKeyValue(key reflect.Value) (funcPointer interface{}) {
 	dt := key.Type()
 	if key.Kind() == reflect.Interface {
 		dt = reflect.TypeOf(key.Interface())
@@ -36,95 +95,28 @@ func getLessThanComparator(key reflect.Value) (funcPointer interface{}) {
 	return
 }
 
-func (d *Dataset) Sort(f interface{}) (ret *Dataset) {
-	return d.LocalSort(f).MergeSorted(f)
-}
-
-// f(V, V) bool : less than function
-// New Dataset contains K,V
-func (d *Dataset) LocalSort(f interface{}) *Dataset {
-	ret, step := add1ShardTo1Step(d, d.Type)
-	step.Function = func(task *Task) {
-		outChan := task.Outputs[0].WriteChan
-		var kvs []interface{}
-		for input := range task.InputChan() {
-			kvs = append(kvs, input.Interface())
-		}
-		lessThanFuncValue := reflect.ValueOf(f)
-		if f == nil && len(kvs) > 0 {
-			v := guessKey(reflect.ValueOf(kvs[0]))
-			f = getLessThanComparator(v)
-			lessThanFuncValue = reflect.ValueOf(f)
-		}
-		// println("set lessThanFuncValue", lessThanFuncValue.String(), "len(kvs)", len(kvs))
-		// println("got all inputs")
-		// if this is stuck, usually means upstream some chan is not closed
-		// since the source waits for all inputs
-
-		if d.Type.Kind() == reflect.Slice {
-			timsort.Sort(kvs, func(a interface{}, b interface{}) bool {
-				// println("a:", reflect.ValueOf(a).Field(0).Kind().String(), "lessThanFuncValue:", lessThanFuncValue.String())
-				ret := lessThanFuncValue.Call([]reflect.Value{
-					reflect.ValueOf(reflect.ValueOf(a).Index(0).Interface()),
-					reflect.ValueOf(reflect.ValueOf(b).Index(0).Interface()),
-				})
-				return ret[0].Bool()
-			})
-		} else {
-			timsort.Sort(kvs, func(a interface{}, b interface{}) bool {
-				ret := lessThanFuncValue.Call([]reflect.Value{
-					reflect.ValueOf(a),
-					reflect.ValueOf(b),
-				})
-				return ret[0].Bool()
-			})
-		}
-
-		for _, kv := range kvs {
-			outChan.Send(reflect.ValueOf(kv))
-		}
-
+func getLessThanComparator(datasetType reflect.Type, key reflect.Value, functionPointer interface{}) func(a interface{}, b interface{}) bool {
+	lessThanFuncValue := reflect.ValueOf(functionPointer)
+	if functionPointer == nil {
+		v := guessKey(key)
+		lessThanFuncValue = reflect.ValueOf(_getLessThanComparatorByKeyValue(v))
 	}
-	return ret
-}
-
-func (d *Dataset) MergeSorted(f interface{}) (ret *Dataset) {
-	ret = d.context.newNextDataset(1, d.Type)
-	step := d.context.AddAllToOneStep(d, ret)
-	step.Function = func(task *Task) {
-		outChan := task.Outputs[0].WriteChan
-		fn := reflect.ValueOf(f)
-		comparator := func(a, b reflect.Value) bool {
-			outs := fn.Call([]reflect.Value{
-				a,
-				b,
+	if datasetType.Kind() == reflect.Slice {
+		return func(a interface{}, b interface{}) bool {
+			// println("a:", reflect.ValueOf(a).Field(0).Kind().String(), "lessThanFuncValue:", lessThanFuncValue.String())
+			ret := lessThanFuncValue.Call([]reflect.Value{
+				reflect.ValueOf(reflect.ValueOf(a).Index(0).Interface()),
+				reflect.ValueOf(reflect.ValueOf(b).Index(0).Interface()),
 			})
-			return outs[0].Bool()
+			return ret[0].Bool()
 		}
-		if d.Type.Kind() == reflect.Struct {
-			comparator = func(a, b reflect.Value) bool {
-				outs := fn.Call([]reflect.Value{
-					a.Field(0),
-					b.Field(0),
-				})
-				return outs[0].Bool()
-			}
-		}
-
-		pq := lib.NewPriorityQueue(comparator)
-		// enqueue one item to the pq from each shard
-		for shardId, shard := range task.Inputs {
-			if x, ok := <-shard.ReadChan; ok {
-				pq.Enqueue(x, shardId)
-			}
-		}
-		for pq.Len() > 0 {
-			t, shardId := pq.Dequeue()
-			outChan.Send(t)
-			if x, ok := <-task.Inputs[shardId].ReadChan; ok {
-				pq.Enqueue(x, shardId)
-			}
+	} else {
+		return func(a interface{}, b interface{}) bool {
+			ret := lessThanFuncValue.Call([]reflect.Value{
+				reflect.ValueOf(a),
+				reflect.ValueOf(b),
+			})
+			return ret[0].Bool()
 		}
 	}
-	return ret
 }
