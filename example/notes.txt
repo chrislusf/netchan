@@ -1,5 +1,11 @@
 TODO:
-0. properly close output chan for each task
-1. cross dataset join
-2. driver lib to run each step as a separate process
-3. distribute process to multiple machines
+1. schedule job to run
+	multiple agents, with different cpu, memory
+2. rsync binaries
+	agent can start on different folders
+3. cleanup when process is completed
+
+
+4. mmap for faster IO???
+
+

@@ -13,29 +13,31 @@ import (
 func main() {
 	flag.Parse()
 
-	// test1()
+	test1()
 
 	// test2()
 
 	// test3()
 
-	test4()
+	// test4()
 
 }
 
 func test1() {
 	flame.NewContext().TextFile(
-		"/etc/passwd", 3,
+		"/etc/passwd", 1,
 	).Filter(func(line string) bool {
-		println(line)
+		// println("filter:", line)
 		return !strings.HasPrefix(line, "#")
 	}).Map(func(line string, ch chan string) {
 		for _, token := range strings.Split(line, ":") {
 			ch <- token
 		}
 	}).Map(func(key string) int {
+		// println("map:", key)
 		return 1
 	}).Reduce(func(x int, y int) int {
+		// println("reduce:", x+y)
 		return x + y
 	}).Map(func(x int) {
 		println("count:", x)
