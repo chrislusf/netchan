@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/chrislusf/netchan/example/driver/cmd"
+	"github.com/chrislusf/netchan/example/driver/scheduler"
 	"github.com/chrislusf/netchan/example/flame"
 	"github.com/golang/protobuf/proto"
 )
@@ -36,36 +37,28 @@ func (fcd *FlowContextDriver) IsDriverMode() bool {
 	return fcd.option.ShouldStart
 }
 
-func (fcd *FlowContextDriver) ShouldRun(fc *flame.FlowContext) bool {
-	return fcd.option.ShouldStart
-}
-
 // driver runs on local, controlling all tasks
 func (fcd *FlowContextDriver) Run(fc *flame.FlowContext) {
 
-	// find all possible resources
+	taskGroups := scheduler.GroupTasks(fc)
 
 	// schedule to run the steps
 	var wg sync.WaitGroup
-	for stepId, step := range fc.Steps {
-		for taskId, task := range step.Tasks {
-			wg.Add(1)
-			go func(stepId, taskId int, task *flame.Task) {
-				defer wg.Done()
-				dir, _ := os.Getwd()
-				cmd := NewStartRequest(os.Args[0], dir,
-					"-task.context.id",
-					strconv.Itoa(fc.Id),
-					"-task.step.id",
-					strconv.Itoa(stepId),
-					"-task.task.id",
-					strconv.Itoa(taskId),
-				)
-				if err := RemoteExecute(fcd.option.Leader, "a1", cmd); err != nil {
-					println("exeuction error:", err.Error())
-				}
-			}(stepId, taskId, task)
-		}
+	for _, tg := range taskGroups {
+		wg.Add(1)
+		go func(taskGroupId int) {
+			defer wg.Done()
+			dir, _ := os.Getwd()
+			request := NewStartRequest(os.Args[0], dir,
+				"-task.context.id",
+				strconv.Itoa(fc.Id),
+				"-task.taskGroup.id",
+				strconv.Itoa(taskGroupId),
+			)
+			if err := RemoteExecute(fcd.option.Leader, "a1", request); err != nil {
+				println("exeuction error:", err.Error())
+			}
+		}(tg.Id)
 	}
 	wg.Wait()
 }

@@ -14,6 +14,7 @@ type Dataset struct {
 	context *FlowContext
 	Type    reflect.Type
 	Shards  []*DatasetShard
+	Step    *Step
 
 	ErrorChan chan error
 	Generator func()

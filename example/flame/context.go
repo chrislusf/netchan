@@ -29,8 +29,13 @@ func (fc *FlowContext) newNextDataset(shardSize int, t reflect.Type) (ret *Datas
 
 // the tasks should run on the source dataset shard
 func (f *FlowContext) AddOneToOneStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
-	s.Inputs = append(s.Inputs, input)
+	s = &Step{Output: output, Id: len(f.Steps), Type: Local}
+	if output != nil {
+		output.Step = s
+	}
+	if input != nil {
+		s.Inputs = append(s.Inputs, input)
+	}
 	// setup the network
 	for i, shard := range input.GetShards() {
 		t := &Task{Inputs: []*DatasetShard{shard}, Step: s, Id: i}
@@ -45,8 +50,14 @@ func (f *FlowContext) AddOneToOneStep(input *Dataset, output *Dataset) (s *Step)
 
 // the task should run on the destination dataset shard
 func (f *FlowContext) AddAllToOneStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
+	s = &Step{Output: output, Id: len(f.Steps), Type: Network}
+	if output != nil {
+		output.Step = s
+	}
 	s.Inputs = append(s.Inputs, input)
+	if len(input.Shards) == 1 {
+		s.Type = Local
+	}
 	// setup the network
 	t := &Task{Step: s, Id: 0}
 	if output != nil {
@@ -63,8 +74,13 @@ func (f *FlowContext) AddAllToOneStep(input *Dataset, output *Dataset) (s *Step)
 // the task should run on the source dataset shard
 // input is nil for initial source dataset
 func (f *FlowContext) AddOneToAllStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
-	s.Inputs = append(s.Inputs, input)
+	s = &Step{Output: output, Id: len(f.Steps), Type: Local}
+	if output != nil {
+		output.Step = s
+	}
+	if input != nil {
+		s.Inputs = append(s.Inputs, input)
+	}
 	// setup the network
 	t := &Task{Step: s, Id: 0}
 	if input != nil {
@@ -78,25 +94,14 @@ func (f *FlowContext) AddOneToAllStep(input *Dataset, output *Dataset) (s *Step)
 	return
 }
 
-// the tasks should run on the source dataset shards
-func (f *FlowContext) AddAllToAllStep(input *Dataset, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
-	s.Inputs = append(s.Inputs, input)
-	// setup the network
-	for _, inShard := range input.GetShards() {
-		t := &Task{Inputs: []*DatasetShard{inShard}, Step: s, Id: 0}
-		for _, outShard := range output.GetShards() {
-			t.Outputs = append(t.Outputs, outShard)
-		}
-		s.Tasks = append(s.Tasks, t)
-	}
-	f.Steps = append(f.Steps, s)
-	return
-}
-
 func (f *FlowContext) AddOneToEveryNStep(input *Dataset, n int, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
-	s.Inputs = append(s.Inputs, input)
+	s = &Step{Output: output, Id: len(f.Steps), Type: Local}
+	if output != nil {
+		output.Step = s
+	}
+	if input != nil {
+		s.Inputs = append(s.Inputs, input)
+	}
 	// setup the network
 	m := len(input.GetShards())
 	for i, inShard := range input.GetShards() {
@@ -111,8 +116,16 @@ func (f *FlowContext) AddOneToEveryNStep(input *Dataset, n int, output *Dataset)
 }
 
 func (f *FlowContext) AddEveryNToOneStep(input *Dataset, m int, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
-	s.Inputs = append(s.Inputs, input)
+	s = &Step{Output: output, Id: len(f.Steps), Type: Network}
+	if output != nil {
+		output.Step = s
+	}
+	if input != nil {
+		s.Inputs = append(s.Inputs, input)
+	}
+	if m == 1 {
+		s.Type = Local
+	}
 	// setup the network
 	n := len(output.GetShards())
 	for i, outShard := range output.GetShards() {
@@ -128,9 +141,14 @@ func (f *FlowContext) AddEveryNToOneStep(input *Dataset, m int, output *Dataset)
 
 // All dataset should have the same number of shards.
 func (f *FlowContext) MergeDatasets1ShardTo1Step(inputs []*Dataset, output *Dataset) (s *Step) {
-	s = &Step{Output: output, Id: len(f.Steps)}
+	s = &Step{Output: output, Id: len(f.Steps), Type: Network}
+	if output != nil {
+		output.Step = s
+	}
 	for _, input := range inputs {
-		s.Inputs = append(s.Inputs, input)
+		if input != nil {
+			s.Inputs = append(s.Inputs, input)
+		}
 	}
 	// setup the network
 	if output != nil {

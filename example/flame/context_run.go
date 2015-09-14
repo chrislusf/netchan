@@ -10,7 +10,7 @@ There are 3 running mode:
 	If not in distributed mode, it should not be intercepted.
 2. "-driver" mode to drive in distributed mode
 	context runner will register
-3. "-task.[context|step|task].id" mode to run task in distributed mode
+3. "-task.[context|taskGroup].id" mode to run task in distributed mode
 */
 
 var contextRunner ContextRunner
@@ -26,48 +26,23 @@ func RegisterTaskRunner(r TaskRunner) {
 
 type ContextRunner interface {
 	Run(fc *FlowContext)
-	ShouldRun(fc *FlowContext) bool
 	IsDriverMode() bool
 }
 
 type TaskRunner interface {
-	Run(fc *FlowContext, step *Step, task *Task)
-	ShouldRun(fc *FlowContext, step *Step, task *Task) bool
+	Run(fc *FlowContext)
 	IsTaskMode() bool
 }
 
 func (fc *FlowContext) Run() {
 
 	if taskRunner.IsTaskMode() {
-		fc.run_taskrunner(taskRunner)
+		taskRunner.Run(fc)
 	} else if contextRunner.IsDriverMode() {
-		fc.run_driver(contextRunner)
+		contextRunner.Run(fc)
 	} else {
 		fc.run_standalone()
 	}
-}
-
-func (fc *FlowContext) run_driver(contextRunner ContextRunner) {
-	if contextRunner.ShouldRun(fc) {
-		contextRunner.Run(fc)
-	}
-}
-
-func (fc *FlowContext) run_taskrunner(tr TaskRunner) {
-	var wg sync.WaitGroup
-	// start all task edges
-	for _, step := range fc.Steps {
-		for _, t := range step.Tasks {
-			if tr.ShouldRun(fc, step, t) {
-				wg.Add(1)
-				go func(t *Task) {
-					defer wg.Done()
-					tr.Run(fc, step, t)
-				}(t)
-			}
-		}
-	}
-	wg.Wait()
 }
 
 func (fc *FlowContext) run_standalone() {
